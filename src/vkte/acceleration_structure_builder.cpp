@@ -103,14 +103,14 @@ void AccelerationStructureBuilder::update_blas(uint32_t blas_idx)
 	blas_update_indices.emplace(blas_idx);
 }
 
-uint32_t AccelerationStructureBuilder::add_instance(uint32_t blas_idx, const vk::TransformMatrixKHR& M, uint32_t custom_index)
+uint32_t AccelerationStructureBuilder::add_instance(uint32_t blas_idx, const vk::TransformMatrixKHR& M, uint32_t custom_index, uint8_t mask)
 {
 	vk::AccelerationStructureInstanceKHR instance;
 	instance.transform = M;
 	instance.accelerationStructureReference = bottom_level_as[blas_idx].device_address;
 	instance.instanceCustomIndex = custom_index;
 	instance.setFlags(vk::GeometryInstanceFlagBitsKHR::eTriangleFacingCullDisable);
-	instance.mask = 0xFF;
+	instance.mask = mask;
 	instances.push_back(instance);
 	return instances.size() - 1;
 }

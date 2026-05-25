@@ -24,7 +24,7 @@ public:
 	};
 	uint32_t add_blas(const std::string& buffer_name, const BLASData& blas_data);
 	void update_blas(uint32_t blas_idx);
-	uint32_t add_instance(uint32_t blas_idx, const vk::TransformMatrixKHR& M, uint32_t custom_index);
+	uint32_t add_instance(uint32_t blas_idx, const vk::TransformMatrixKHR& M, uint32_t custom_index, uint8_t mask = 0xFF);
 	void update_instance(uint32_t instance_idx, const vk::TransformMatrixKHR& M);
 	void construct(vk::CommandBuffer& cb, QueueFamilyFlags build_queue, const std::string& buffer_name);
 	void update_tlas(vk::CommandBuffer& cb, QueueFamilyFlags build_queue);
