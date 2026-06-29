@@ -18,8 +18,17 @@ void LogicalDevice::construct(const PhysicalDevice& p_device, const Features& fe
 		qci_s.push_back(qci);
 	}
 
+	vk::PhysicalDeviceShaderAtomicFloatFeaturesEXT atomic_float_features;
+	atomic_float_features.shaderBufferFloat32Atomics = features.shader_atomic_float ? VK_TRUE : VK_FALSE;
+	atomic_float_features.shaderBufferFloat32AtomicAdd = features.shader_atomic_float ? VK_TRUE : VK_FALSE;
+	atomic_float_features.shaderSharedFloat32Atomics = features.shader_atomic_float ? VK_TRUE : VK_FALSE;
+	atomic_float_features.shaderSharedFloat32AtomicAdd = features.shader_atomic_float ? VK_TRUE : VK_FALSE;
+	atomic_float_features.shaderImageFloat32Atomics = features.shader_atomic_float ? VK_TRUE : VK_FALSE;
+	atomic_float_features.shaderImageFloat32AtomicAdd = features.shader_atomic_float ? VK_TRUE : VK_FALSE;
+
 	vk::PhysicalDeviceExtendedDynamicState3FeaturesEXT dynamic_state_3;
 	dynamic_state_3.extendedDynamicState3PolygonMode = features.dynamic_polygon_mode ? VK_TRUE : VK_FALSE;
+	dynamic_state_3.pNext = &atomic_float_features;
 
 	vk::PhysicalDeviceRayQueryFeaturesKHR rq_features;
 	rq_features.pNext = &dynamic_state_3;

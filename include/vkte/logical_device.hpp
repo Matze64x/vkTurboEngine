@@ -24,6 +24,7 @@ public:
 		bool dynamic_polygon_mode = false;
 		bool ray_query = false;
 		bool acceleration_structure = false;
+		bool shader_atomic_float = false;
 	};
 
 	LogicalDevice() = default;

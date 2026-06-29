@@ -54,6 +54,7 @@ void VulkanMainContext::construct(const std::string& title, const uint32_t width
 	}
 	if (features.device_features.ray_query) device_extensions.push_back(VK_KHR_RAY_QUERY_EXTENSION_NAME);
 	if (features.device_features.dynamic_polygon_mode) device_extensions.push_back(VK_EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME);
+	if (features.device_features.shader_atomic_float) device_extensions.push_back(VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME);
 	physical_device.construct(instance, device_extensions, surface);
 	queue_families.construct(physical_device.get(), surface);
 	logical_device.construct(physical_device, features.device_features, queue_families, queues);
@@ -83,6 +84,7 @@ void VulkanMainContext::construct(const Features& features, const std::string& s
 	}
 	if (features.device_features.ray_query) device_extensions.push_back(VK_KHR_RAY_QUERY_EXTENSION_NAME);
 	if (features.device_features.dynamic_polygon_mode) device_extensions.push_back(VK_EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME);
+	if (features.device_features.shader_atomic_float) device_extensions.push_back(VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME);
 	physical_device.construct(instance, device_extensions, std::nullopt);
 	queue_families.construct(physical_device.get(), {});
 	logical_device.construct(physical_device, features.device_features, queue_families, queues);
