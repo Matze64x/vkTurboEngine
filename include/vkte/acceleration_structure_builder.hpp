@@ -55,8 +55,16 @@ private:
 		int32_t scratch_buffer = -1;
 	};
 
+	struct ScratchBuffer {
+		uint32_t buffer;
+		vk::DeviceAddress device_address;
+	};
+
+	ScratchBuffer create_scratch_buffer(const std::string& buffer_name, vk::DeviceSize build_scratch_size);
+
 	const VulkanMainContext& vmc;
 	Storage& storage;
+	uint32_t scratch_offset_alignment = 0;
 	vk::WriteDescriptorSetAccelerationStructureKHR wdsas;
 	std::vector<BLAS> bottom_level_as;
 	std::set<uint32_t> blas_update_indices;

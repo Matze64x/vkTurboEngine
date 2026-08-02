@@ -4,6 +4,24 @@ namespace vkte
 {
 AccelerationStructureBuilder::AccelerationStructureBuilder(const VulkanMainContext& vmc, Storage& storage) : vmc(vmc), storage(storage) {}
 
+AccelerationStructureBuilder::ScratchBuffer AccelerationStructureBuilder::create_scratch_buffer(const std::string& buffer_name, vk::DeviceSize build_scratch_size)
+{
+	if (scratch_offset_alignment == 0)
+	{
+		vk::PhysicalDeviceAccelerationStructurePropertiesKHR as_properties;
+		vk::PhysicalDeviceProperties2 properties;
+		properties.pNext = &as_properties;
+		vmc.physical_device.get().getProperties2(&properties);
+		scratch_offset_alignment = as_properties.minAccelerationStructureScratchOffsetAlignment;
+	}
+
+	// Pad buffer and round address up to requirement.
+	const uint32_t buffer_idx = storage.add_buffer(buffer_name + " scratch (vkte internal)", build_scratch_size + scratch_offset_alignment - 1, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress, true, QueueFamilyFlags::Compute | QueueFamilyFlags::Graphics | QueueFamilyFlags::Transfer);
+	const vk::DeviceAddress device_address = storage.get_buffer(buffer_idx).get_device_address();
+	const vk::DeviceSize misalignment = device_address % scratch_offset_alignment;
+	return ScratchBuffer{buffer_idx, misalignment == 0 ? device_address : device_address + (scratch_offset_alignment - misalignment)};
+}
+
 void AccelerationStructureBuilder::destruct()
 {
 	vmc.logical_device.get().destroyAccelerationStructureKHR(top_level_as.handle);
@@ -88,10 +106,11 @@ uint32_t AccelerationStructureBuilder::add_blas(const std::string& buffer_name, 
 
 	blas.device_address = vmc.logical_device.get().getAccelerationStructureAddressKHR(&asdai);
 
-	blas.scratch_buffer = storage.add_buffer(buffer_name + " scratch (vkte internal)", asbsi.buildScratchSize, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress, true, QueueFamilyFlags::Compute | QueueFamilyFlags::Graphics | QueueFamilyFlags::Transfer);
+	const ScratchBuffer scratch = create_scratch_buffer(buffer_name, asbsi.buildScratchSize);
+	blas.scratch_buffer = scratch.buffer;
 
 	blas.asbgi.dstAccelerationStructure = blas.handle;
-	blas.asbgi.scratchData.deviceAddress = storage.get_buffer(blas.scratch_buffer).get_device_address();
+	blas.asbgi.scratchData.deviceAddress = scratch.device_address;
 
 	update_blas(blas_idx);
 
@@ -159,10 +178,11 @@ void AccelerationStructureBuilder::construct(vk::CommandBuffer& cb, QueueFamilyF
 	wdsas.pAccelerationStructures = &(top_level_as.handle);
 	storage.get_buffer(top_level_as.buffer).pNext = &(wdsas);
 
-	top_level_as.scratch_buffer = storage.add_buffer(buffer_name + " scratch (vkte internal)", asbsi.buildScratchSize, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress, true, QueueFamilyFlags::Compute | QueueFamilyFlags::Graphics | QueueFamilyFlags::Transfer);
+	const ScratchBuffer scratch = create_scratch_buffer(buffer_name, asbsi.buildScratchSize);
+	top_level_as.scratch_buffer = scratch.buffer;
 
 	top_level_as.asbgi.dstAccelerationStructure = top_level_as.handle;
-	top_level_as.asbgi.scratchData.deviceAddress = storage.get_buffer(top_level_as.scratch_buffer).get_device_address();
+	top_level_as.asbgi.scratchData.deviceAddress = scratch.device_address;
 
 	top_level_as.asbri.primitiveCount = instances.size();
 	top_level_as.asbri.primitiveOffset = 0;
