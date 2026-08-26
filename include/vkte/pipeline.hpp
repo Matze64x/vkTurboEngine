@@ -14,6 +14,7 @@ public:
 	{
 		std::vector<vk::Format> color_formats;
 		vk::Format depth_format = vk::Format::eUndefined;
+		vk::SampleCountFlagBits rasterization_samples = vk::SampleCountFlagBits::e1;
 		const vk::DescriptorSetLayout* set_layout;
 		std::vector<Shader> shaders;
 		vk::PolygonMode polygon_mode = vk::PolygonMode::eFill;

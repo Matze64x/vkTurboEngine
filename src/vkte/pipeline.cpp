@@ -185,7 +185,7 @@ void Pipeline::construct()
 
 		vk::PipelineMultisampleStateCreateInfo pmssci;
 		pmssci.sampleShadingEnable = VK_TRUE;
-		pmssci.rasterizationSamples = vk::SampleCountFlagBits::e1;
+		pmssci.rasterizationSamples = graphics_settings->rasterization_samples;
 		pmssci.minSampleShading = 0.4f;
 		pmssci.pSampleMask = nullptr;
 		pmssci.alphaToCoverageEnable = VK_FALSE;
