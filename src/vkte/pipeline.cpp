@@ -153,6 +153,7 @@ void Pipeline::construct()
 	{
 		std::vector<vk::DynamicState> dynamic_states = {vk::DynamicState::eViewport, vk::DynamicState::eScissor};
 		if (vmc.get_features().device_features.dynamic_polygon_mode) dynamic_states.push_back(vk::DynamicState::ePolygonModeEXT);
+		if (vmc.get_features().device_features.dynamic_line_width) dynamic_states.push_back(vk::DynamicState::eLineWidth);
 		vk::PipelineDynamicStateCreateInfo pdsci;
 		pdsci.dynamicStateCount = dynamic_states.size();
 		pdsci.pDynamicStates = dynamic_states.data();
@@ -175,7 +176,7 @@ void Pipeline::construct()
 		prsci.depthClampEnable = VK_FALSE;
 		prsci.rasterizerDiscardEnable = VK_FALSE;
 		prsci.polygonMode = graphics_settings->polygon_mode;
-		prsci.lineWidth = 0.5f;
+		prsci.lineWidth = 1.0f;
 		prsci.cullMode = vk::CullModeFlagBits::eNone;
 		prsci.frontFace = vk::FrontFace::eCounterClockwise;
 		prsci.depthBiasEnable = VK_FALSE;
