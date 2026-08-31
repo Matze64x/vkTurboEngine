@@ -196,17 +196,24 @@ void Pipeline::construct()
 		for (uint32_t i = 0; i < graphics_settings->color_formats.size(); i++)
 		{
 			pcbas[i].colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
-			if (graphics_settings->additive_blending)
+			switch (graphics_settings->blend_mode)
 			{
+			case BlendMode::Additive:
 				pcbas[i].blendEnable = VK_TRUE;
 				pcbas[i].srcColorBlendFactor = vk::BlendFactor::eSrcAlpha;
 				pcbas[i].dstColorBlendFactor = vk::BlendFactor::eOne;
-			}
-			else
-		{
+				break;
+			case BlendMode::AlphaBlend:
+				pcbas[i].blendEnable = VK_TRUE;
+				pcbas[i].srcColorBlendFactor = vk::BlendFactor::eSrcAlpha;
+				pcbas[i].dstColorBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
+				break;
+			case BlendMode::None:
+			default:
 				pcbas[i].blendEnable = VK_FALSE;
 				pcbas[i].srcColorBlendFactor = vk::BlendFactor::eOne;
 				pcbas[i].dstColorBlendFactor = vk::BlendFactor::eZero;
+				break;
 			}
 			pcbas[i].colorBlendOp = vk::BlendOp::eAdd;
 			pcbas[i].srcAlphaBlendFactor = vk::BlendFactor::eOne;
@@ -234,8 +241,8 @@ void Pipeline::construct()
 
 		vk::PipelineDepthStencilStateCreateInfo pdssci;
 		pdssci.depthTestEnable = VK_TRUE;
-		if (graphics_settings->additive_blending) pdssci.depthWriteEnable = VK_FALSE;
-		else pdssci.depthWriteEnable = VK_TRUE;
+		if (graphics_settings->blend_mode == BlendMode::None) pdssci.depthWriteEnable = VK_TRUE;
+		else pdssci.depthWriteEnable = VK_FALSE;
 		pdssci.depthCompareOp = vk::CompareOp::eLess;
 		pdssci.depthBoundsTestEnable = VK_FALSE;
 		pdssci.minDepthBounds = 0.0f;

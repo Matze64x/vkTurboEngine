@@ -10,6 +10,13 @@ namespace vkte
 class Pipeline
 {
 public:
+	enum class BlendMode
+	{
+		None,
+		Additive,
+		AlphaBlend
+	};
+
 	struct GraphicsSettings
 	{
 		std::vector<vk::Format> color_formats;
@@ -22,7 +29,7 @@ public:
 		std::vector<vk::VertexInputBindingDescription> binding_descriptions;
 		std::vector<vk::VertexInputAttributeDescription> attribute_description;
 		std::vector<vk::PushConstantRange> pcrs;
-		bool additive_blending = false;
+		BlendMode blend_mode = BlendMode::None;
 	};
 
 	struct ComputeSettings
