@@ -46,6 +46,11 @@ if (ENABLE_VKTE_LOGGING)
 	target_compile_definitions(vkte_headless PUBLIC VKTE_LOGGING=1)
 endif()
 target_compile_definitions(vkte_headless PRIVATE VULKAN_HPP_STORAGE_SHARED_EXPORT=1)
+target_precompile_headers(vkte_headless PRIVATE
+	<vulkan/vulkan.hpp>
+	<vk_mem_alloc.h>
+	<spdlog/spdlog.h>
+)
 
 add_library(vkte_window ${SOURCE_FILES}
 	src/vkte/swapchain.cpp
@@ -76,6 +81,16 @@ if (ENABLE_VKTE_LOGGING)
 	target_compile_definitions(vkte_window PUBLIC VKTE_LOGGING=1)
 endif()
 target_compile_definitions(vkte_window PRIVATE VULKAN_HPP_STORAGE_SHARED_EXPORT=1)
+target_precompile_headers(vkte_window PRIVATE
+	<vulkan/vulkan.hpp>
+	<vk_mem_alloc.h>
+	<spdlog/spdlog.h>
+)
+# imgui_impl_vulkan.cpp needs VK_NO_PROTOTYPES defined
+set_source_files_properties(
+	"${PROJECT_SOURCE_DIR}/dependencies/imgui/backends/imgui_impl_vulkan.cpp"
+	PROPERTIES SKIP_PRECOMPILE_HEADERS ON
+)
 
 add_library(vkte::headless ALIAS vkte_headless)
 add_library(vkte::window ALIAS vkte_window)
