@@ -1,0 +1,240 @@
+#include "vkte/engine.hpp"
+
+#include <algorithm>
+#include <deque>
+#include <unordered_map>
+#include "vkte/vkte_log.hpp"
+
+namespace vkte
+{
+Engine::Engine(const EngineSettings& settings) : vcc(vmc), storage(vmc, vcc)
+{
+#if ENABLE_VKTE_WINDOW
+	vmc.construct(settings.window_title, settings.window_width, settings.window_height, settings.features, settings.shader_root_dir);
+#else
+	vmc.construct(settings.features, settings.shader_root_dir);
+#endif
+	vcc.construct();
+}
+
+Engine::~Engine()
+{
+	storage.clear();
+	vcc.destruct();
+	vmc.destruct();
+}
+
+void Engine::register_component(Component& component)
+{
+	components.push_back(&component);
+}
+
+const Pipeline& Engine::get_pipeline(PipelineHandle handle) const
+{
+	VKTE_ASSERT(handle.valid() && handle.index < pipelines.size(), "vkte: Invalid pipeline handle!");
+	return pipelines.at(handle.index);
+}
+
+const vk::DescriptorSetLayout& Engine::get_descriptor_set_layout(DescriptorSetLayoutHandle handle) const
+{
+	VKTE_ASSERT(handle.valid() && handle.index < descriptor_set_layouts.size(), "vkte: Invalid descriptor set layout handle!");
+	return descriptor_set_layouts.at(handle.index);
+}
+
+const std::vector<vk::DescriptorSet>& Engine::get_descriptor_sets(DescriptorSetsHandle handle) const
+{
+	VKTE_ASSERT(handle.valid() && handle.index < descriptor_sets.size(), "vkte: Invalid descriptor sets handle!");
+	return descriptor_sets.at(handle.index);
+}
+
+void Engine::construct_all(
+#if ENABLE_VKTE_WINDOW
+	const FrameSettings& settings
+#endif
+)
+{
+#if ENABLE_VKTE_WINDOW
+	frame_settings = settings;
+#endif
+	for (uint32_t i = 0; i < components.size(); i++)
+	{
+		declarations.declaring_component = i;
+		components[i]->declare_resources(declarations, storage, frame_settings);
+	}
+	declarations.declaring_component = ~0u;
+	build_descriptor_set_layouts();
+	build_pipelines();
+	build_descriptor_sets();
+}
+
+void Engine::build_descriptor_set_layouts()
+{
+	descriptor_set_layouts.reserve(declarations.layouts.size());
+	for (uint32_t i = 0; i < declarations.layouts.size(); i++)
+	{
+		ResourceDeclarations::LayoutEntry& entry = *declarations.layouts[i];
+		std::sort(entry.bindings.begin(), entry.bindings.end(), [](const vk::DescriptorSetLayoutBinding& a, const vk::DescriptorSetLayoutBinding& b) { return a.binding < b.binding; });
+
+		std::vector<vk::DescriptorBindingFlags> binding_flags(entry.bindings.size(), vk::DescriptorBindingFlagBits::ePartiallyBound);
+		vk::DescriptorSetLayoutBindingFlagsCreateInfo dslbfci;
+		dslbfci.bindingCount = binding_flags.size();
+		dslbfci.pBindingFlags = binding_flags.data();
+
+		vk::DescriptorSetLayoutCreateInfo dslci;
+		dslci.bindingCount = entry.bindings.size();
+		dslci.pBindings = entry.bindings.data();
+		if (!entry.bindings.empty()) dslci.pNext = &dslbfci;
+
+		vk::DescriptorSetLayout layout = vmc.logical_device.get().createDescriptorSetLayout(dslci);
+		set_debug_name(vk::ObjectType::eDescriptorSetLayout, uint64_t(static_cast<vk::DescriptorSetLayout::CType>(layout)), std::format("{}_set_layout_{}", owner_name(entry.owner), i));
+		descriptor_set_layouts.push_back(layout);
+	}
+}
+
+void Engine::build_pipelines()
+{
+	pipelines.reserve(declarations.pipelines.size());
+	for (uint32_t i = 0; i < declarations.pipelines.size(); i++)
+	{
+		const ResourceDeclarations::PipelineEntry& entry = *declarations.pipelines[i];
+		if (entry.graphics_settings) pipelines.emplace_back(vmc, *entry.graphics_settings);
+		else if (entry.compute_settings) pipelines.emplace_back(vmc, *entry.compute_settings);
+		else VKTE_THROW("vkte: Pipeline with no valid settings!");
+		Pipeline& pipeline = pipelines.back();
+		VKTE_ASSERT(pipeline.compile_shaders(), std::format("vkte: Failed to compile shaders for pipeline declared by \"{}\"!", owner_name(entry.owner)));
+		vk::DescriptorSetLayout* set_layout = entry.layout.valid() ? &descriptor_set_layouts.at(entry.layout.index) : nullptr;
+		pipeline.construct(set_layout);
+		set_debug_name(vk::ObjectType::ePipeline, uint64_t(static_cast<vk::Pipeline::CType>(pipeline.get())), std::format("{}_pipeline_{}", owner_name(entry.owner), i));
+	}
+}
+
+void Engine::build_descriptor_sets()
+{
+	uint32_t total_sets = 0;
+	std::unordered_map<vk::DescriptorType, uint32_t> descriptor_counts;
+	for (const std::unique_ptr<ResourceDeclarations::SetsEntry>& entry : declarations.sets)
+	{
+		total_sets += entry->set_count;
+		for (const vk::DescriptorSetLayoutBinding& binding : declarations.layouts.at(entry->layout.index)->bindings)
+		{
+			descriptor_counts[binding.descriptorType] += binding.descriptorCount * entry->set_count;
+		}
+	}
+	if (total_sets == 0) return;
+
+	std::vector<vk::DescriptorPoolSize> pool_sizes;
+	for (const std::pair<const vk::DescriptorType, uint32_t>& count : descriptor_counts) pool_sizes.emplace_back(count.first, count.second);
+	vk::DescriptorPoolCreateInfo dpci;
+	dpci.poolSizeCount = pool_sizes.size();
+	dpci.pPoolSizes = pool_sizes.data();
+	dpci.maxSets = total_sets;
+	descriptor_pool = vmc.logical_device.get().createDescriptorPool(dpci);
+
+	descriptor_sets.resize(declarations.sets.size());
+	for (uint32_t i = 0; i < declarations.sets.size(); i++)
+	{
+		const ResourceDeclarations::SetsEntry& entry = *declarations.sets[i];
+		// all the same layout, to allocate every set of this declaration at once
+		std::vector<vk::DescriptorSetLayout> layouts(entry.set_count, descriptor_set_layouts.at(entry.layout.index));
+		vk::DescriptorSetAllocateInfo dsai;
+		dsai.descriptorPool = descriptor_pool;
+		dsai.descriptorSetCount = layouts.size();
+		dsai.pSetLayouts = layouts.data();
+		descriptor_sets[i] = vmc.logical_device.get().allocateDescriptorSets(dsai);
+	}
+
+	// deques, because the infos have to stay put until the single updateDescriptorSets() below reads them
+	std::deque<std::vector<vk::DescriptorBufferInfo>> buffer_infos;
+	std::deque<std::vector<vk::DescriptorImageInfo>> image_infos;
+	std::vector<vk::WriteDescriptorSet> writes;
+	for (uint32_t i = 0; i < declarations.sets.size(); i++)
+	{
+		const ResourceDeclarations::SetsEntry& entry = *declarations.sets[i];
+		for (const std::optional<ResourceDeclarations::Descriptor>& slot : entry.descriptors)
+		{
+			// a binding that nothing was ever written to (relying on the partially-bound flag) leaves its slot empty
+			if (!slot) continue;
+			const ResourceDeclarations::Descriptor& descriptor = slot.value();
+
+			vk::WriteDescriptorSet wds;
+			wds.dstSet = descriptor_sets[i][descriptor.set];
+			wds.dstBinding = descriptor.binding;
+			wds.dstArrayElement = 0;
+			wds.descriptorType = descriptor.type;
+			if (!descriptor.is_image)
+			{
+				std::vector<vk::DescriptorBufferInfo>& infos = buffer_infos.emplace_back();
+				for (uint32_t index : descriptor.resources)
+				{
+					Buffer& buffer = storage.get_buffer(index);
+					infos.emplace_back(buffer.get(), 0, buffer.get_byte_size());
+					if (buffer.pNext) wds.pNext = buffer.pNext;
+				}
+				wds.pBufferInfo = infos.data();
+				wds.descriptorCount = infos.size();
+			}
+			else
+			{
+				std::vector<vk::DescriptorImageInfo>& infos = image_infos.emplace_back();
+				for (uint32_t index : descriptor.resources)
+				{
+					Image& image = storage.get_image(index);
+					infos.emplace_back(image.get_sampler(), image.get_view(), image.get_layout());
+				}
+				wds.pImageInfo = infos.data();
+				wds.descriptorCount = infos.size();
+			}
+			if (wds.descriptorCount > 0) writes.push_back(wds);
+		}
+	}
+	vmc.logical_device.get().updateDescriptorSets(writes, {});
+}
+
+const char* Engine::owner_name(uint32_t component) const
+{
+	if (component >= components.size()) return "engine";
+	return components[component]->name();
+}
+
+bool Engine::reload_shaders_all()
+{
+	bool success = true;
+	for (Pipeline& pipeline : pipelines)
+	{
+		if (!pipeline.compile_shaders()) success = false;
+	}
+	if (!success) return false;
+
+	for (uint32_t i = 0; i < declarations.pipelines.size(); i++)
+	{
+		const ResourceDeclarations::PipelineEntry& entry = *declarations.pipelines[i];
+		vk::DescriptorSetLayout* set_layout = entry.layout.valid() ? &descriptor_set_layouts.at(entry.layout.index) : nullptr;
+		pipelines[i].reconstruct(set_layout);
+	}
+	return true;
+}
+
+void Engine::destruct_all()
+{
+	for (Pipeline& pipeline : pipelines) pipeline.destruct();
+	pipelines.clear();
+	declarations.pipelines.clear();
+	if (descriptor_pool)
+	{
+		vmc.logical_device.get().destroyDescriptorPool(descriptor_pool);
+		descriptor_pool = nullptr;
+	}
+	descriptor_sets.clear();
+	declarations.sets.clear();
+	for (const vk::DescriptorSetLayout& layout : descriptor_set_layouts) vmc.logical_device.get().destroyDescriptorSetLayout(layout);
+	descriptor_set_layouts.clear();
+	declarations.layouts.clear();
+	for (Component* component : components) component->destruct(storage);
+}
+
+void Engine::set_debug_name(vk::ObjectType type, uint64_t handle, const std::string& name) const
+{
+	vk::DebugUtilsObjectNameInfoEXT duoni(type, handle, name.c_str());
+	vmc.logical_device.get().setDebugUtilsObjectNameEXT(duoni);
+}
+} // namespace vkte

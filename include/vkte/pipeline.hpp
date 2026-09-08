@@ -22,7 +22,6 @@ public:
 		std::vector<vk::Format> color_formats;
 		vk::Format depth_format = vk::Format::eUndefined;
 		vk::SampleCountFlagBits rasterization_samples = vk::SampleCountFlagBits::e1;
-		const vk::DescriptorSetLayout* set_layout;
 		std::vector<Shader> shaders;
 		vk::PolygonMode polygon_mode = vk::PolygonMode::eFill;
 		vk::PrimitiveTopology primitive_topology = vk::PrimitiveTopology::eTriangleList;
@@ -34,7 +33,6 @@ public:
 
 	struct ComputeSettings
 	{
-		const vk::DescriptorSetLayout* set_layout;
 		Shader shader;
 		uint32_t push_constant_byte_size = 0;
 	};
@@ -46,12 +44,14 @@ public:
 	};
 
 	Pipeline(const VulkanMainContext& vmc, Type type);
+	Pipeline(const VulkanMainContext& vmc, const GraphicsSettings& settings);
+	Pipeline(const VulkanMainContext& vmc, const ComputeSettings& settings);
 	GraphicsSettings& get_graphics_settings();
 	ComputeSettings& get_compute_settings();
 
 	bool compile_shaders();
-	void construct();
-	void reconstruct();
+	void construct(vk::DescriptorSetLayout* set_layout);
+	void reconstruct(vk::DescriptorSetLayout* set_layout);
 	void destruct();
 	const vk::Pipeline& get() const;
 	const vk::PipelineLayout& get_layout() const;

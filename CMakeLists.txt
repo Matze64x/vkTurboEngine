@@ -13,6 +13,8 @@ set(SOURCE_FILES
 	src/vkte/command_pool.cpp
 	src/vkte/descriptor_set_handler.cpp
 	src/vkte/device_timer.cpp
+	src/vkte/engine.cpp
+	src/vkte/resource_declarations.cpp
 	src/vkte/extensions_handler.cpp
 	src/vkte/image.cpp
 	src/vkte/instance.cpp

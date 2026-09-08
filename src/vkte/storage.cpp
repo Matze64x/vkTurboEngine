@@ -40,12 +40,12 @@ std::string Storage::get_memory_info()
 
 void Storage::destroy_buffer(uint32_t idx)
 {
-	if (buffers.at(idx).buffer.has_value())
+	if (buffers.at(idx)->buffer.has_value())
 	{
-		VmaAllocationInfo alloc_info = buffers.at(idx).buffer.value().get_allocation_info();
-		VKTE_DEBUG("vkte: Destroying buffer \"{}\", Size: {}, Type: {}", buffers.at(idx).name, alloc_info.size, alloc_info.memoryType);
-		buffers.at(idx).buffer.value().destruct();
-		buffers.at(idx).buffer.reset();
+		VmaAllocationInfo alloc_info = buffers.at(idx)->buffer.value().get_allocation_info();
+		VKTE_DEBUG("vkte: Destroying buffer \"{}\", Size: {}, Type: {}", buffers.at(idx)->name, alloc_info.size, alloc_info.memoryType);
+		buffers.at(idx)->buffer.value().destruct();
+		buffers.at(idx)->buffer.reset();
 	}
 	else
 	{
@@ -55,12 +55,12 @@ void Storage::destroy_buffer(uint32_t idx)
 
 void Storage::destroy_image(uint32_t idx)
 {
-	if (images.at(idx).image.has_value())
+	if (images.at(idx)->image.has_value())
 	{
-		VmaAllocationInfo alloc_info = images.at(idx).image.value().get_allocation_info();
-		VKTE_DEBUG("vkte: Destroying image \"{}\", Size: {}, Type: {}", images.at(idx).name, alloc_info.size, alloc_info.memoryType);
-		images.at(idx).image.value().destruct();
-		images.at(idx).image.reset();
+		VmaAllocationInfo alloc_info = images.at(idx)->image.value().get_allocation_info();
+		VKTE_DEBUG("vkte: Destroying image \"{}\", Size: {}, Type: {}", images.at(idx)->name, alloc_info.size, alloc_info.memoryType);
+		images.at(idx)->image.value().destruct();
+		images.at(idx)->image.reset();
 	}
 	else
 	{
@@ -82,20 +82,20 @@ void Storage::clear()
 {
 	for (const std::pair<std::string, uint32_t>& buffer : buffer_names)
 	{
-		if (buffers[buffer.second].buffer.has_value())
+		if (buffers[buffer.second]->buffer.has_value())
 		{
 			VKTE_WARN("vkte: Buffer \"{}\" not destroyed! Cleaning up...", buffer.first);
-			buffers[buffer.second].buffer.value().destruct();
+			buffers[buffer.second]->buffer.value().destruct();
 		}
 	}
 	buffers.clear();
 	buffer_names.clear();
 	for (const std::pair<std::string, uint32_t>& image : image_names)
 	{
-		if (images[image.second].image.has_value())
+		if (images[image.second]->image.has_value())
 		{
 			VKTE_WARN("vkte: Image \"{}\" not destroyed! Cleaning up...", image.first);
-			images[image.second].image.value().destruct();
+			images[image.second]->image.value().destruct();
 		}
 	}
 	images.clear();
@@ -104,25 +104,35 @@ void Storage::clear()
 
 Buffer& Storage::get_buffer(uint32_t idx)
 {
-	if (!buffers.at(idx).buffer.has_value()) VKTE_THROW("vkte: Trying to get already destroyed buffer!");
-	return buffers.at(idx).buffer.value();
+	if (!buffers.at(idx)->buffer.has_value()) VKTE_THROW("vkte: Trying to get already destroyed buffer!");
+	return buffers.at(idx)->buffer.value();
 }
 
 Image& Storage::get_image(uint32_t idx)
 {
-	if (!images.at(idx).image.has_value()) VKTE_THROW("vkte: Trying to get already destroyed image!");
-	return images.at(idx).image.value();
+	if (!images.at(idx)->image.has_value()) VKTE_THROW("vkte: Trying to get already destroyed image!");
+	return images.at(idx)->image.value();
+}
+
+uint32_t Storage::get_buffer_index(const std::string& name) const
+{
+	if (!buffer_names.contains(name)) VKTE_THROW("vkte: Failed to find buffer with name: " + name);
+	return buffer_names.at(name);
+}
+
+uint32_t Storage::get_image_index(const std::string& name) const
+{
+	if (!image_names.contains(name)) VKTE_THROW("vkte: Failed to find image with name: " + name);
+	return image_names.at(name);
 }
 
 Buffer& Storage::get_buffer_by_name(const std::string& name)
 {
-	if (!buffer_names.contains(name)) VKTE_THROW("vkte:Failed to find buffer with name: " + name);
-	return get_buffer(buffer_names.at(name));
+	return get_buffer(get_buffer_index(name));
 }
 
 Image& Storage::get_image_by_name(const std::string& name)
 {
-	if (!image_names.contains(name)) VKTE_THROW("vkte:Failed to find image with name: " + name);
-	return get_image(image_names.at(name));
+	return get_image(get_image_index(name));
 }
 } // namespace vkte

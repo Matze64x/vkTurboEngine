@@ -15,6 +15,12 @@ Pipeline::Pipeline(const VulkanMainContext& vmc, Pipeline::Type type) : vmc(vmc)
 	else if (type == Type::Compute) compute_settings = std::make_unique<ComputeSettings>();
 }
 
+Pipeline::Pipeline(const VulkanMainContext& vmc, const Pipeline::GraphicsSettings& settings) : vmc(vmc), type(Pipeline::Type::Graphics), graphics_settings(std::make_unique<Pipeline::GraphicsSettings>(settings))
+{}
+
+Pipeline::Pipeline(const VulkanMainContext& vmc, const Pipeline::ComputeSettings& settings) : vmc(vmc), type(Pipeline::Type::Compute), compute_settings(std::make_unique<Pipeline::ComputeSettings>(settings))
+{}
+
 Pipeline::GraphicsSettings& Pipeline::get_graphics_settings()
 {
 	VKTE_ASSERT(type == Type::Graphics, "vkte: Invalid access to graphics pipeline settings!");
@@ -131,9 +137,10 @@ bool Pipeline::compile_shaders()
 	spec_infos.clear();
 	if (type == Type::Graphics)
 	{
-		shader_stages.resize(graphics_settings->shaders.size());
-		spec_infos.resize(graphics_settings->shaders.size());
-		for (int32_t i = 0; i < graphics_settings->shaders.size(); i++)
+		const size_t shader_count = graphics_settings->shaders.size();
+		shader_stages.resize(shader_count);
+		spec_infos.resize(shader_count);
+		for (size_t i = 0; i < shader_count; i++)
 		{
 			if (!compile_shader(vmc.logical_device.get(), vmc.shader_root_dir, graphics_settings->shaders[i], shader_stages[i], spec_infos[i])) return false;
 		}
@@ -147,7 +154,7 @@ bool Pipeline::compile_shaders()
 	return true;
 }
 
-void Pipeline::construct()
+void Pipeline::construct(vk::DescriptorSetLayout* set_layout)
 {
 	if (type == Type::Graphics)
 	{
@@ -233,7 +240,7 @@ void Pipeline::construct()
 
 		vk::PipelineLayoutCreateInfo plci;
 		plci.setLayoutCount = 1;
-		plci.pSetLayouts = graphics_settings->set_layout;
+		plci.pSetLayouts = set_layout;
 		plci.pushConstantRangeCount = graphics_settings->pcrs.size();
 		plci.pPushConstantRanges = graphics_settings->pcrs.data();
 
@@ -286,7 +293,7 @@ void Pipeline::construct()
 
 		vk::PipelineLayoutCreateInfo plci;
 		plci.setLayoutCount = 1;
-		plci.pSetLayouts = compute_settings->set_layout;
+		plci.pSetLayouts = set_layout;
 		if (compute_settings->push_constant_byte_size > 0)
 		{
 			plci.pushConstantRangeCount = 1;
@@ -305,11 +312,11 @@ void Pipeline::construct()
 	}
 }
 
-void Pipeline::reconstruct()
+void Pipeline::reconstruct(vk::DescriptorSetLayout* set_layout)
 {
 	vmc.logical_device.get().destroyPipeline(pipeline);
 	vmc.logical_device.get().destroyPipelineLayout(pipeline_layout);
-	construct();
+	construct(set_layout);
 }
 
 void Pipeline::destruct()
