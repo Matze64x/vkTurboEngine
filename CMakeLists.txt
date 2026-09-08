@@ -11,7 +11,6 @@ set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
 
 set(SOURCE_FILES
 	src/vkte/command_pool.cpp
-	src/vkte/descriptor_set_handler.cpp
 	src/vkte/device_timer.cpp
 	src/vkte/engine.cpp
 	src/vkte/resource_declarations.cpp
