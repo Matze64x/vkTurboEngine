@@ -13,7 +13,7 @@ class Component
 public:
 	virtual ~Component() = default;
 	virtual const char* name() const = 0;
-	virtual void declare_resources(ResourceDeclarations& declarations, Storage& storage, const FrameSettings& frame_settings) {}
-	virtual void destruct(Storage& storage) {}
+	virtual void declare_resources(ResourceDeclarations& declarations, Storage& storage, const FrameSettings& frame_settings) = 0;
+	virtual void destruct(Storage& storage) = 0;
 };
 } // namespace vkte
