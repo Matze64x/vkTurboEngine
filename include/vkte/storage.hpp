@@ -82,6 +82,8 @@ public:
 	void clear();
 	Buffer& get_buffer(const ResourceHandle& handle);
 	Image& get_image(const ResourceHandle& handle);
+	Buffer& get_buffer_by_name(const std::string& name);
+	Image& get_image_by_name(const std::string& name);
 	uint32_t get_buffer_index(const std::string& name) const;
 	uint32_t get_image_index(const std::string& name) const;
 

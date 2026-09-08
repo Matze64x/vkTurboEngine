@@ -110,6 +110,16 @@ Image& Storage::get_image(const ResourceHandle& handle)
 	return images.at(idx)->image.value();
 }
 
+Buffer& Storage::get_buffer_by_name(const std::string& name)
+{
+	return get_buffer(ResourceHandle(name, false));
+}
+
+Image& Storage::get_image_by_name(const std::string& name)
+{
+	return get_image(ResourceHandle(name, true));
+}
+
 uint32_t Storage::get_buffer_index(const std::string& name) const
 {
 	if (!buffer_names.contains(name)) VKTE_THROW("vkte: Failed to find buffer with name: " + name);
