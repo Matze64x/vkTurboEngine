@@ -29,24 +29,9 @@ DescriptorSetsHandle ResourceDeclarations::add_descriptor_sets(DescriptorSetLayo
 	return DescriptorSetsHandle{uint32_t(sets.size() - 1)};
 }
 
-void ResourceDeclarations::add_buffer_descriptor(DescriptorSetsHandle sets, uint32_t set, uint32_t binding, uint32_t buffer)
+void ResourceDeclarations::add_descriptor(DescriptorSetsHandle sets, uint32_t set, uint32_t binding, ResourceHandle resource)
 {
-	add_descriptor(sets, set, binding, false, {buffer});
-}
-
-void ResourceDeclarations::add_buffer_descriptor(DescriptorSetsHandle sets, uint32_t set, uint32_t binding, const std::vector<uint32_t>& buffers)
-{
-	add_descriptor(sets, set, binding, false, buffers);
-}
-
-void ResourceDeclarations::add_image_descriptor(DescriptorSetsHandle sets, uint32_t set, uint32_t binding, uint32_t image)
-{
-	add_descriptor(sets, set, binding, true, {image});
-}
-
-void ResourceDeclarations::add_image_descriptor(DescriptorSetsHandle sets, uint32_t set, uint32_t binding, const std::vector<uint32_t>& images)
-{
-	add_descriptor(sets, set, binding, true, images);
+	add_descriptor(sets, set, binding, std::vector<ResourceHandle>{std::move(resource)});
 }
 
 PipelineHandle ResourceDeclarations::add_pipeline(const Pipeline::GraphicsSettings& settings, DescriptorSetLayoutHandle layout)
@@ -61,8 +46,12 @@ PipelineHandle ResourceDeclarations::add_pipeline(const Pipeline::ComputeSetting
 	return PipelineHandle{uint32_t(pipelines.size() - 1)};
 }
 
-void ResourceDeclarations::add_descriptor(DescriptorSetsHandle handle, uint32_t set, uint32_t binding, bool is_image, const std::vector<uint32_t>& resources)
+void ResourceDeclarations::add_descriptor(DescriptorSetsHandle handle, uint32_t set, uint32_t binding, std::vector<ResourceHandle> resources)
 {
+	VKTE_ASSERT(!resources.empty(), "vkte: Descriptor added with no resources!");
+	const bool is_image = resources.front().is_image;
+	for (const ResourceHandle& resource : resources) VKTE_ASSERT(resource.is_image == is_image, "vkte: Descriptor resources must all be the same kind (buffer or image)!");
+
 	SetsEntry& entry = get_descriptor_sets(handle);
 	VKTE_ASSERT(set < entry.set_count, "vkte: Descriptor added to a set beyond the declared set count!");
 
@@ -80,7 +69,7 @@ void ResourceDeclarations::add_descriptor(DescriptorSetsHandle handle, uint32_t 
 
 	std::optional<Descriptor>& slot = entry.descriptors[binding_index * entry.set_count + set];
 	VKTE_ASSERT(!slot.has_value(), "vkte: Descriptor already added for this binding and set!");
-	slot = Descriptor{set, binding, is_image, layout_entry.bindings[binding_index].descriptorType, resources};
+	slot = Descriptor{set, binding, layout_entry.bindings[binding_index].descriptorType, std::move(resources)};
 }
 
 ResourceDeclarations::LayoutEntry& ResourceDeclarations::get_descriptor_set_layout(DescriptorSetLayoutHandle handle)

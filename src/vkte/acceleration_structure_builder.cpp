@@ -16,22 +16,22 @@ AccelerationStructureBuilder::ScratchBuffer AccelerationStructureBuilder::create
 	}
 
 	// Pad buffer and round address up to requirement.
-	const uint32_t buffer_idx = storage.add_buffer(buffer_name + " scratch (vkte internal)", build_scratch_size + scratch_offset_alignment - 1, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress, true, QueueFamilyFlags::Compute | QueueFamilyFlags::Graphics | QueueFamilyFlags::Transfer);
-	const vk::DeviceAddress device_address = storage.get_buffer(buffer_idx).get_device_address();
+	const ResourceHandle buffer_handle = storage.add_buffer(buffer_name + " scratch (vkte internal)", build_scratch_size + scratch_offset_alignment - 1, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress, true, QueueFamilyFlags::Compute | QueueFamilyFlags::Graphics | QueueFamilyFlags::Transfer);
+	const vk::DeviceAddress device_address = storage.get_buffer(buffer_handle).get_device_address();
 	const vk::DeviceSize misalignment = device_address % scratch_offset_alignment;
-	return ScratchBuffer{buffer_idx, misalignment == 0 ? device_address : device_address + (scratch_offset_alignment - misalignment)};
+	return ScratchBuffer{buffer_handle, misalignment == 0 ? device_address : device_address + (scratch_offset_alignment - misalignment)};
 }
 
 void AccelerationStructureBuilder::destruct()
 {
 	vmc.logical_device.get().destroyAccelerationStructureKHR(top_level_as.handle);
 	clean_up_scratch_buffers(false);
-	if (top_level_as.buffer > -1) storage.destroy_buffer(top_level_as.buffer);
+	if (top_level_as.buffer.valid()) storage.destroy(top_level_as.buffer);
 
 	for (BLAS& blas : bottom_level_as)
 	{
 		vmc.logical_device.get().destroyAccelerationStructureKHR(blas.handle);
-		if (top_level_as.buffer > -1) storage.destroy_buffer(blas.buffer);
+		if (top_level_as.buffer.valid()) storage.destroy(blas.buffer);
 	}
 	bottom_level_as.clear();
 	instances.clear();
@@ -41,14 +41,14 @@ void AccelerationStructureBuilder::clean_up_scratch_buffers(bool keep_dynamic)
 {
 	for (BLAS& blas : bottom_level_as)
 	{
-		if (blas.scratch_buffer > -1 && (!keep_dynamic || !blas.dynamic))
+		if (blas.scratch_buffer.valid() && (!keep_dynamic || !blas.dynamic))
 		{
-			storage.destroy_buffer(blas.scratch_buffer);
-			blas.scratch_buffer = -1;
+			storage.destroy(blas.scratch_buffer);
+			blas.scratch_buffer = ResourceHandle();
 		}
 	}
-	if (top_level_as.scratch_buffer > -1 && !keep_dynamic) storage.destroy_buffer(top_level_as.scratch_buffer);
-	if (instances_buffer > -1 && !keep_dynamic) storage.destroy_buffer(instances_buffer);
+	if (top_level_as.scratch_buffer.valid() && !keep_dynamic) storage.destroy(top_level_as.scratch_buffer);
+	if (instances_buffer.valid() && !keep_dynamic) storage.destroy(instances_buffer);
 }
 
 uint32_t AccelerationStructureBuilder::add_blas(const std::string& buffer_name, const BLASData& blas_data)

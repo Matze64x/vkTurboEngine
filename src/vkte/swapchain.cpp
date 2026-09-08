@@ -69,7 +69,7 @@ void Swapchain::destruct()
 {
 	for (auto& image_view : image_views) vmc.logical_device.get().destroyImageView(image_view);
 	image_views.clear();
-	storage.destroy_image(depth_buffer);
+	storage.destroy(depth_buffer);
 	vmc.logical_device.get().destroySwapchainKHR(swapchain);
 }
 

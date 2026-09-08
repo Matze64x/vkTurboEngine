@@ -6,6 +6,7 @@
 #include "vulkan/vulkan.hpp"
 #include "vkte/buffer.hpp"
 #include "vkte/image.hpp"
+#include "vkte/resource_handles.hpp"
 #include "vkte/vkte_log.hpp"
 
 namespace vkte
@@ -17,7 +18,7 @@ public:
 	std::string get_memory_info();
 
 	template<typename... Args>
-	uint32_t add_buffer(const std::string& name, Args&&... args)
+	ResourceHandle add_buffer(const std::string& name, Args&&... args)
 	{
 		if (buffer_names.contains(name))
 		{
@@ -43,11 +44,11 @@ public:
 		vmc.logical_device.get().setDebugUtilsObjectNameEXT(duoni);
 		VmaAllocationInfo alloc_info = buffers.at(buffer_names.at(name))->buffer.value().get_allocation_info();
 		VKTE_DEBUG("vkte: Creating buffer \"{}\", Size: {}, Type: {}", name, alloc_info.size, alloc_info.memoryType);
-		return buffer_names.at(name);
+		return ResourceHandle(buffer_names.at(name), name, false);
 	}
 
 	template<typename... Args>
-	uint32_t add_image(const std::string& name, Args&&... args)
+	ResourceHandle add_image(const std::string& name, Args&&... args)
 	{
 		if (image_names.contains(name))
 		{
@@ -66,25 +67,21 @@ public:
 		else
 		{
 			images.push_back(std::make_unique<ImageElement>(name, std::make_optional<Image>(vmc, vcc, std::forward<Args>(args)...)));
-			image_names.emplace(name, images.size() - 1);
+			image_names.emplace(name, uint32_t(images.size() - 1));
 		}
 		const vk::Image& i = images.at(image_names.at(name))->image.value().get_image();
 		vk::DebugUtilsObjectNameInfoEXT duoni(i.objectType, uint64_t(static_cast<vk::Image::CType>(i)), name.c_str());
 		vmc.logical_device.get().setDebugUtilsObjectNameEXT(duoni);
 		VmaAllocationInfo alloc_info = images.at(image_names.at(name))->image.value().get_allocation_info();
 		VKTE_DEBUG("vkte: Creating image \"{}\", Size: {}, Type: {}", name, alloc_info.size, alloc_info.memoryType);
-		return image_names.at(name);
+		return ResourceHandle(image_names.at(name), name, true);
 	}
 
-	void destroy_buffer(uint32_t idx);
-	void destroy_image(uint32_t idx);
-	void destroy_buffer(const std::string& name);
-	void destroy_image(const std::string& name);
+	// Destroys a buffer or image, whichever the handle refers to (see ResourceHandle::is_image).
+	void destroy(const ResourceHandle& handle);
 	void clear();
-	Buffer& get_buffer(uint32_t idx);
-	Image& get_image(uint32_t idx);
-	Buffer& get_buffer_by_name(const std::string& name);
-	Image& get_image_by_name(const std::string& name);
+	Buffer& get_buffer(const ResourceHandle& handle);
+	Image& get_image(const ResourceHandle& handle);
 	uint32_t get_buffer_index(const std::string& name) const;
 	uint32_t get_image_index(const std::string& name) const;
 

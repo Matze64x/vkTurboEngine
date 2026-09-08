@@ -1,6 +1,7 @@
 #pragma once
 
 #include "vkte/vulkan_main_context.hpp"
+#include "vkte/resource_handles.hpp"
 #include "vkte/storage.hpp"
 #include <set>
 
@@ -14,9 +15,8 @@ public:
 	void clean_up_scratch_buffers(bool keep_dynamic = true);
 	struct BLASData
 	{
-		// id to the buffer in the storage class
-		uint32_t vertex_buffer_id;
-		uint32_t index_buffer_id;
+		ResourceHandle vertex_buffer_id;
+		ResourceHandle index_buffer_id;
 		vk::DeviceSize vertex_stride;
 		std::vector<uint32_t> index_offsets = {0};
 		std::vector<uint32_t> index_counts = {};
@@ -38,8 +38,8 @@ private:
 		vk::AccelerationStructureCreateInfoKHR asci;
 		vk::AccelerationStructureKHR handle;
 		uint64_t device_address = 0;
-		int32_t buffer = -1;
-		int32_t scratch_buffer = -1;
+		ResourceHandle buffer;
+		ResourceHandle scratch_buffer;
 		bool dynamic = false;
 	};
 
@@ -51,12 +51,12 @@ private:
 		vk::AccelerationStructureBuildRangeInfoKHR asbri;
 		vk::AccelerationStructureKHR handle;
 		uint64_t device_address = 0;
-		int32_t buffer = -1;
-		int32_t scratch_buffer = -1;
+		ResourceHandle buffer;
+		ResourceHandle scratch_buffer;
 	};
 
 	struct ScratchBuffer {
-		uint32_t buffer;
+		ResourceHandle buffer;
 		vk::DeviceAddress device_address;
 	};
 
@@ -70,7 +70,7 @@ private:
 	std::set<uint32_t> blas_update_indices;
 	std::vector<vk::BufferMemoryBarrier> blas_memory_barriers;
 	std::vector<vk::AccelerationStructureInstanceKHR> instances;
-	int32_t instances_buffer = -1;
+	ResourceHandle instances_buffer;
 	TLAS top_level_as;
 };
 } // namespace vkte

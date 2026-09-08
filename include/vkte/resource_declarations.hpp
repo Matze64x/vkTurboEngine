@@ -15,10 +15,8 @@ public:
 	DescriptorSetLayoutHandle add_descriptor_set_layout();
 	void add_binding(DescriptorSetLayoutHandle layout, uint32_t binding, vk::DescriptorType type, vk::ShaderStageFlags stages, uint32_t count = 1);
 	DescriptorSetsHandle add_descriptor_sets(DescriptorSetLayoutHandle layout, uint32_t set_count = 1);
-	void add_buffer_descriptor(DescriptorSetsHandle sets, uint32_t set, uint32_t binding, uint32_t buffer);
-	void add_buffer_descriptor(DescriptorSetsHandle sets, uint32_t set, uint32_t binding, const std::vector<uint32_t>& buffers);
-	void add_image_descriptor(DescriptorSetsHandle sets, uint32_t set, uint32_t binding, uint32_t image);
-	void add_image_descriptor(DescriptorSetsHandle sets, uint32_t set, uint32_t binding, const std::vector<uint32_t>& images);
+	void add_descriptor(DescriptorSetsHandle sets, uint32_t set, uint32_t binding, ResourceHandle resource);
+	void add_descriptor(DescriptorSetsHandle sets, uint32_t set, uint32_t binding, std::vector<ResourceHandle> resources);
 	PipelineHandle add_pipeline(const Pipeline::GraphicsSettings& settings, DescriptorSetLayoutHandle layout);
 	PipelineHandle add_pipeline(const Pipeline::ComputeSettings& settings, DescriptorSetLayoutHandle layout);
 
@@ -29,9 +27,8 @@ private:
 	{
 		uint32_t set;
 		uint32_t binding;
-		bool is_image;
 		vk::DescriptorType type;
-		std::vector<uint32_t> resources;
+		std::vector<ResourceHandle> resources;
 	};
 
 	struct LayoutEntry
@@ -64,7 +61,6 @@ private:
 
 	LayoutEntry& get_descriptor_set_layout(DescriptorSetLayoutHandle handle);
 	SetsEntry& get_descriptor_sets(DescriptorSetsHandle handle);
-	void add_descriptor(DescriptorSetsHandle sets, uint32_t set, uint32_t binding, bool is_image, const std::vector<uint32_t>& resources);
 
 	std::vector<std::unique_ptr<LayoutEntry>> layouts;
 	std::vector<std::unique_ptr<SetsEntry>> sets;

@@ -161,12 +161,12 @@ void Engine::build_descriptor_sets()
 			wds.dstBinding = descriptor.binding;
 			wds.dstArrayElement = 0;
 			wds.descriptorType = descriptor.type;
-			if (!descriptor.is_image)
+			if (!descriptor.resources.front().is_image)
 			{
 				std::vector<vk::DescriptorBufferInfo>& infos = buffer_infos.emplace_back();
-				for (uint32_t index : descriptor.resources)
+				for (const ResourceHandle& resource : descriptor.resources)
 				{
-					Buffer& buffer = storage.get_buffer(index);
+					Buffer& buffer = storage.get_buffer(resource);
 					infos.emplace_back(buffer.get(), 0, buffer.get_byte_size());
 					if (buffer.pNext) wds.pNext = buffer.pNext;
 				}
@@ -176,9 +176,9 @@ void Engine::build_descriptor_sets()
 			else
 			{
 				std::vector<vk::DescriptorImageInfo>& infos = image_infos.emplace_back();
-				for (uint32_t index : descriptor.resources)
+				for (const ResourceHandle& resource : descriptor.resources)
 				{
-					Image& image = storage.get_image(index);
+					Image& image = storage.get_image(resource);
 					infos.emplace_back(image.get_sampler(), image.get_view(), image.get_layout());
 				}
 				wds.pImageInfo = infos.data();

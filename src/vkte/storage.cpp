@@ -38,44 +38,38 @@ std::string Storage::get_memory_info()
 	return info_string;
 }
 
-void Storage::destroy_buffer(uint32_t idx)
+void Storage::destroy(const ResourceHandle& handle)
 {
-	if (buffers.at(idx)->buffer.has_value())
+	if (handle.is_image)
 	{
-		VmaAllocationInfo alloc_info = buffers.at(idx)->buffer.value().get_allocation_info();
-		VKTE_DEBUG("vkte: Destroying buffer \"{}\", Size: {}, Type: {}", buffers.at(idx)->name, alloc_info.size, alloc_info.memoryType);
-		buffers.at(idx)->buffer.value().destruct();
-		buffers.at(idx)->buffer.reset();
+		const uint32_t idx = handle.id != ResourceHandle::invalid_id ? handle.id : get_image_index(handle.name);
+		if (images.at(idx)->image.has_value())
+		{
+			VmaAllocationInfo alloc_info = images.at(idx)->image.value().get_allocation_info();
+			VKTE_DEBUG("vkte: Destroying image \"{}\", Size: {}, Type: {}", images.at(idx)->name, alloc_info.size, alloc_info.memoryType);
+			images.at(idx)->image.value().destruct();
+			images.at(idx)->image.reset();
+		}
+		else
+		{
+			VKTE_ERROR("vkte: Trying to destroy already destroyed image!");
+		}
 	}
 	else
 	{
-		VKTE_ERROR("vkte: Trying to destroy already destroyed buffer!");
+		const uint32_t idx = handle.id != ResourceHandle::invalid_id ? handle.id : get_buffer_index(handle.name);
+		if (buffers.at(idx)->buffer.has_value())
+		{
+			VmaAllocationInfo alloc_info = buffers.at(idx)->buffer.value().get_allocation_info();
+			VKTE_DEBUG("vkte: Destroying buffer \"{}\", Size: {}, Type: {}", buffers.at(idx)->name, alloc_info.size, alloc_info.memoryType);
+			buffers.at(idx)->buffer.value().destruct();
+			buffers.at(idx)->buffer.reset();
+		}
+		else
+		{
+			VKTE_ERROR("vkte: Trying to destroy already destroyed buffer!");
+		}
 	}
-}
-
-void Storage::destroy_image(uint32_t idx)
-{
-	if (images.at(idx)->image.has_value())
-	{
-		VmaAllocationInfo alloc_info = images.at(idx)->image.value().get_allocation_info();
-		VKTE_DEBUG("vkte: Destroying image \"{}\", Size: {}, Type: {}", images.at(idx)->name, alloc_info.size, alloc_info.memoryType);
-		images.at(idx)->image.value().destruct();
-		images.at(idx)->image.reset();
-	}
-	else
-	{
-		VKTE_ERROR("vkte: Trying to destroy already destroyed image!");
-	}
-}
-
-void Storage::destroy_buffer(const std::string& name)
-{
-	destroy_buffer(buffer_names.at(name));
-}
-
-void Storage::destroy_image(const std::string& name)
-{
-	destroy_image(image_names.at(name));
 }
 
 void Storage::clear()
@@ -102,14 +96,16 @@ void Storage::clear()
 	image_names.clear();
 }
 
-Buffer& Storage::get_buffer(uint32_t idx)
+Buffer& Storage::get_buffer(const ResourceHandle& handle)
 {
+	const uint32_t idx = handle.id != ResourceHandle::invalid_id ? handle.id : get_buffer_index(handle.name);
 	if (!buffers.at(idx)->buffer.has_value()) VKTE_THROW("vkte: Trying to get already destroyed buffer!");
 	return buffers.at(idx)->buffer.value();
 }
 
-Image& Storage::get_image(uint32_t idx)
+Image& Storage::get_image(const ResourceHandle& handle)
 {
+	const uint32_t idx = handle.id != ResourceHandle::invalid_id ? handle.id : get_image_index(handle.name);
 	if (!images.at(idx)->image.has_value()) VKTE_THROW("vkte: Trying to get already destroyed image!");
 	return images.at(idx)->image.value();
 }
@@ -124,15 +120,5 @@ uint32_t Storage::get_image_index(const std::string& name) const
 {
 	if (!image_names.contains(name)) VKTE_THROW("vkte: Failed to find image with name: " + name);
 	return image_names.at(name);
-}
-
-Buffer& Storage::get_buffer_by_name(const std::string& name)
-{
-	return get_buffer(get_buffer_index(name));
-}
-
-Image& Storage::get_image_by_name(const std::string& name)
-{
-	return get_image(get_image_index(name));
 }
 } // namespace vkte

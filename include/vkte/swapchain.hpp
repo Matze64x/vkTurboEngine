@@ -1,6 +1,7 @@
 #pragma once
 
 #include "vulkan/vulkan.hpp"
+#include "vkte/resource_handles.hpp"
 #include "vkte/storage.hpp"
 #include "vkte/vulkan_main_context.hpp"
 
@@ -31,7 +32,7 @@ private:
 	vk::SurfaceFormatKHR surface_format;
 	vk::Format depth_format;
 	vk::SwapchainKHR swapchain;
-	uint32_t depth_buffer;
+	ResourceHandle depth_buffer;
 	std::vector<vk::Image> images;
 	std::vector<vk::ImageView> image_views;
 
