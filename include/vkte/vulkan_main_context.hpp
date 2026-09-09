@@ -23,9 +23,9 @@ class VulkanMainContext
 public:
 	VulkanMainContext() = default;
 #if ENABLE_VKTE_WINDOW
-	void construct(const std::string& title, const uint32_t width, const uint32_t height, const Features& features, const std::string& shader_root_dir);
+	void construct(const std::string& title, const uint32_t width, const uint32_t height, const Features& features);
 #else
-	void construct(const Features& features, const std::string& shader_root_dir);
+	void construct(const Features& features);
 #endif
 	void destruct();
 #if ENABLE_VKTE_WINDOW
@@ -38,7 +38,6 @@ public:
 	const vk::Queue& get_compute_queue() const;
 	const vk::Queue& get_present_queue() const;
 	const Features& get_features() const;
-	std::string shader_root_dir;
 
 private:
 	std::unordered_map<QueueIndex, vk::Queue> queues;

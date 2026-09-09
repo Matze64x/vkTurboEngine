@@ -3,7 +3,7 @@
 #include "vulkan/vulkan.hpp"
 #include "vkte/vulkan_main_context.hpp"
 #include "vkte/shader.hpp"
-#include <memory>
+#include "vkte/shader_repository.hpp"
 
 namespace vkte
 {
@@ -37,34 +37,17 @@ public:
 		uint32_t push_constant_byte_size = 0;
 	};
 
-	enum class Type
-	{
-		Graphics,
-		Compute
-	};
+	explicit Pipeline(const VulkanMainContext& vmc);
 
-	Pipeline(const VulkanMainContext& vmc, Type type);
-	Pipeline(const VulkanMainContext& vmc, const GraphicsSettings& settings);
-	Pipeline(const VulkanMainContext& vmc, const ComputeSettings& settings);
-	GraphicsSettings& get_graphics_settings();
-	ComputeSettings& get_compute_settings();
-
-	bool compile_shaders();
-	void construct(vk::DescriptorSetLayout* set_layout);
-	void reconstruct(vk::DescriptorSetLayout* set_layout);
+	void construct(const GraphicsSettings& settings, const ShaderRepository& shader_repository, vk::DescriptorSetLayout* set_layout);
+	void construct(const ComputeSettings& settings, const ShaderRepository& shader_repository, vk::DescriptorSetLayout* set_layout);
 	void destruct();
 	const vk::Pipeline& get() const;
 	const vk::PipelineLayout& get_layout() const;
 
 private:
-	Type type;
-	std::unique_ptr<GraphicsSettings> graphics_settings;
-	std::unique_ptr<ComputeSettings> compute_settings;
-
 	const VulkanMainContext& vmc;
 	vk::PipelineLayout pipeline_layout;
 	vk::Pipeline pipeline;
-	std::vector<vk::PipelineShaderStageCreateInfo> shader_stages;
-	std::vector<vk::SpecializationInfo> spec_infos;
 };
 } // namespace vkte

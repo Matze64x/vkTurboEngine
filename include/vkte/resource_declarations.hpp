@@ -53,8 +53,8 @@ private:
 	{
 		PipelineEntry(const Pipeline::GraphicsSettings& settings, DescriptorSetLayoutHandle layout, uint32_t owner);
 		PipelineEntry(const Pipeline::ComputeSettings& settings, DescriptorSetLayoutHandle layout, uint32_t owner);
-		std::unique_ptr<Pipeline::GraphicsSettings> graphics_settings;
-		std::unique_ptr<Pipeline::ComputeSettings> compute_settings;
+		std::unique_ptr<const Pipeline::GraphicsSettings> graphics_settings;
+		std::unique_ptr<const Pipeline::ComputeSettings> compute_settings;
 		DescriptorSetLayoutHandle layout;
 		uint32_t owner;
 	};

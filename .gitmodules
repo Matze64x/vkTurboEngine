@@ -1,0 +1,3 @@
+[submodule "dependencies/slang"]
+	path = dependencies/slang
+	url = https://github.com/shader-slang/slang.git

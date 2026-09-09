@@ -6,6 +6,7 @@ option(ENABLE_VKTE_LOGGING "Enable vkte logging" OFF)
 
 set(SDL3_DIR "${PROJECT_SOURCE_DIR}/dependencies/SDL3")
 set(SPDLOG_DIR "${PROJECT_SOURCE_DIR}/dependencies/spdlog")
+set(SLANG_DIR "${PROJECT_SOURCE_DIR}/dependencies/slang")
 
 set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
 
@@ -23,6 +24,7 @@ set(SOURCE_FILES
 	src/vkte/pipeline.cpp
 	src/vkte/queue_families.cpp
 	src/vkte/shader.cpp
+	src/vkte/shader_repository.cpp
 	src/vkte/storage.cpp
 	src/vkte/synchronization.cpp
 	src/vkte/vulkan_command_context.cpp
@@ -31,6 +33,19 @@ set(SOURCE_FILES
 
 add_subdirectory("${SDL3_DIR}")
 add_subdirectory("${SPDLOG_DIR}")
+
+set(SLANG_ENABLE_SLANGD OFF CACHE BOOL "" FORCE)
+set(SLANG_ENABLE_SLANGI OFF CACHE BOOL "" FORCE)
+set(SLANG_ENABLE_SLANGC OFF CACHE BOOL "" FORCE)
+set(SLANG_ENABLE_SLANGRT OFF CACHE BOOL "" FORCE)
+set(SLANG_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
+set(SLANG_ENABLE_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(SLANG_ENABLE_REPLAYER OFF CACHE BOOL "" FORCE)
+set(SLANG_ENABLE_GFX OFF CACHE BOOL "" FORCE)
+set(SLANG_ENABLE_SLANG_RHI OFF CACHE BOOL "" FORCE)
+set(SLANG_ENABLE_DXIL OFF CACHE BOOL "" FORCE)
+set(SLANG_SLANG_LLVM_FLAVOR "DISABLE" CACHE STRING "" FORCE)
+add_subdirectory("${SLANG_DIR}")
 
 add_library(vkte_headless ${SOURCE_FILES})
 target_include_directories(vkte_headless PUBLIC
@@ -41,6 +56,9 @@ target_include_directories(vkte_headless PUBLIC
 )
 target_link_libraries(vkte_headless PUBLIC
 	spdlog::spdlog
+)
+target_link_libraries(vkte_headless PRIVATE
+	slang
 )
 target_compile_definitions(vkte_headless PUBLIC VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1 VULKAN_HPP_STORAGE_SHARED=1 IMGUI_IMPL_VULKAN_NO_PROTOTYPES=1)
 if (ENABLE_VKTE_LOGGING)
@@ -76,6 +94,9 @@ target_include_directories(vkte_window PUBLIC
 target_link_libraries(vkte_window PUBLIC
 	SDL3::SDL3
 	spdlog::spdlog
+)
+target_link_libraries(vkte_window PRIVATE
+	slang
 )
 target_compile_definitions(vkte_window PUBLIC VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1 VULKAN_HPP_STORAGE_SHARED=1 IMGUI_IMPL_VULKAN_NO_PROTOTYPES=1 ENABLE_VKTE_WINDOW=1)
 if (ENABLE_VKTE_LOGGING)

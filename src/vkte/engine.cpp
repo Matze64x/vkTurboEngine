@@ -10,16 +10,18 @@ namespace vkte
 Engine::Engine(const EngineSettings& settings) : vcc(vmc), storage(vmc, vcc)
 {
 #if ENABLE_VKTE_WINDOW
-	vmc.construct(settings.window_title, settings.window_width, settings.window_height, settings.features, settings.shader_root_dir);
+	vmc.construct(settings.window_title, settings.window_width, settings.window_height, settings.features);
 #else
-	vmc.construct(settings.features, settings.shader_root_dir);
+	vmc.construct(settings.features);
 #endif
 	vcc.construct();
+	shader_repository.construct(vmc.logical_device.get(), settings.shader_root_dir);
 }
 
 Engine::~Engine()
 {
 	storage.clear();
+	shader_repository.destruct();
 	vcc.destruct();
 	vmc.destruct();
 }
@@ -63,6 +65,24 @@ void Engine::construct_all(
 	}
 	declarations.declaring_component = ~0u;
 	build_descriptor_set_layouts();
+
+	pipelines.reserve(declarations.pipelines.size());
+	std::vector<const Shader*> shaders;
+	for (const std::unique_ptr<ResourceDeclarations::PipelineEntry>& entry : declarations.pipelines)
+	{
+		pipelines.emplace_back(vmc);
+		if (entry->graphics_settings)
+		{
+			for (const Shader& shader : entry->graphics_settings->shaders) shaders.push_back(&shader);
+		}
+		else if (entry->compute_settings)
+		{
+			shaders.push_back(&entry->compute_settings->shader);
+		}
+		else VKTE_THROW("vkte: Pipeline with no valid settings!");
+	}
+	VKTE_ASSERT(shader_repository.compile_all(shaders), "vkte: Failed to compile one or more declared shaders!");
+
 	build_pipelines();
 	build_descriptor_sets();
 }
@@ -93,17 +113,14 @@ void Engine::build_descriptor_set_layouts()
 
 void Engine::build_pipelines()
 {
-	pipelines.reserve(declarations.pipelines.size());
 	for (uint32_t i = 0; i < declarations.pipelines.size(); i++)
 	{
 		const ResourceDeclarations::PipelineEntry& entry = *declarations.pipelines[i];
-		if (entry.graphics_settings) pipelines.emplace_back(vmc, *entry.graphics_settings);
-		else if (entry.compute_settings) pipelines.emplace_back(vmc, *entry.compute_settings);
-		else VKTE_THROW("vkte: Pipeline with no valid settings!");
-		Pipeline& pipeline = pipelines.back();
-		VKTE_ASSERT(pipeline.compile_shaders(), std::format("vkte: Failed to compile shaders for pipeline declared by \"{}\"!", owner_name(entry.owner)));
+		Pipeline& pipeline = pipelines[i];
 		vk::DescriptorSetLayout* set_layout = entry.layout.valid() ? &descriptor_set_layouts.at(entry.layout.index) : nullptr;
-		pipeline.construct(set_layout);
+		if (entry.graphics_settings) pipeline.construct(*entry.graphics_settings, shader_repository, set_layout);
+		else if (entry.compute_settings) pipeline.construct(*entry.compute_settings, shader_repository, set_layout);
+		else VKTE_THROW("vkte: Pipeline with no valid settings!");
 		set_debug_name(vk::ObjectType::ePipeline, uint64_t(static_cast<vk::Pipeline::CType>(pipeline.get())), std::format("{}_pipeline_{}", owner_name(entry.owner), i));
 	}
 }
@@ -198,19 +215,9 @@ const char* Engine::owner_name(uint32_t component) const
 
 bool Engine::reload_shaders_all()
 {
-	bool success = true;
-	for (Pipeline& pipeline : pipelines)
-	{
-		if (!pipeline.compile_shaders()) success = false;
-	}
-	if (!success) return false;
-
-	for (uint32_t i = 0; i < declarations.pipelines.size(); i++)
-	{
-		const ResourceDeclarations::PipelineEntry& entry = *declarations.pipelines[i];
-		vk::DescriptorSetLayout* set_layout = entry.layout.valid() ? &descriptor_set_layouts.at(entry.layout.index) : nullptr;
-		pipelines[i].reconstruct(set_layout);
-	}
+	if (!shader_repository.recompile_all()) return false;
+	for (Pipeline& pipeline : pipelines) pipeline.destruct();
+	build_pipelines();
 	return true;
 }
 

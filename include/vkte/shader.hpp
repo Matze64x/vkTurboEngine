@@ -5,19 +5,14 @@
 
 namespace vkte
 {
-enum class Language
-{
-	Glsl,
-	Slang
-};
 class Shader
 {
 public:
 	Shader() = default;
-	Shader(const std::string& name, Language lang, vk::ShaderStageFlagBits stage_flag);
+	Shader(const std::string& name, vk::ShaderStageFlagBits stage_flag, const std::string& entry_point = "main");
 	std::string name;
-	Language lang;
 	vk::ShaderStageFlagBits stage_flag;
+	std::string entry_point;
 
 	template<typename T>
 	void add_specialization_constant(uint32_t id, T data)

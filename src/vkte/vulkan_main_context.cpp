@@ -31,9 +31,8 @@ static VKAPI_ATTR vk::Bool32 VKAPI_CALL debug_callback(vk::DebugUtilsMessageSeve
 namespace vkte
 {
 #if ENABLE_VKTE_WINDOW
-void VulkanMainContext::construct(const std::string& title, const uint32_t width, const uint32_t height, const Features& features, const std::string& shader_root_dir)
+void VulkanMainContext::construct(const std::string& title, const uint32_t width, const uint32_t height, const Features& features)
 {
-	this->shader_root_dir = shader_root_dir;
 	this->features = features;
 	PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr = dl.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
 	VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
@@ -64,9 +63,8 @@ void VulkanMainContext::construct(const std::string& title, const uint32_t width
 	window.show();
 }
 #else
-void VulkanMainContext::construct(const Features& features, const std::string& shader_root_dir)
+void VulkanMainContext::construct(const Features& features)
 {
-	this->shader_root_dir = shader_root_dir;
 	this->features = features;
 	PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr = dl.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
 	VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);

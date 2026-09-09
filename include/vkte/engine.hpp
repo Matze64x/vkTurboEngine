@@ -6,6 +6,7 @@
 #include "vkte/pipeline.hpp"
 #include "vkte/resource_declarations.hpp"
 #include "vkte/resource_handles.hpp"
+#include "vkte/shader_repository.hpp"
 #include "vkte/storage.hpp"
 #include "vkte/vulkan_command_context.hpp"
 #include "vkte/vulkan_main_context.hpp"
@@ -60,6 +61,7 @@ private:
 	VulkanMainContext vmc;
 	VulkanCommandContext vcc;
 	Storage storage;
+	ShaderRepository shader_repository;
 	FrameSettings frame_settings;
 	std::vector<Component*> components;
 	ResourceDeclarations declarations;
