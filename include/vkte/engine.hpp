@@ -8,6 +8,7 @@
 #include "vkte/resource_handles.hpp"
 #include "vkte/shader_repository.hpp"
 #include "vkte/storage.hpp"
+#include "vkte/thread_manager.hpp"
 #include "vkte/vulkan_command_context.hpp"
 #include "vkte/vulkan_main_context.hpp"
 
@@ -56,11 +57,13 @@ public:
 	VulkanMainContext& get_vmc() { return vmc; }
 	VulkanCommandContext& get_vcc() { return vcc; }
 	Storage& get_storage() { return storage; }
+	ThreadManager& get_thread_manager() { return thread_manager; }
 
 private:
 	VulkanMainContext vmc;
 	VulkanCommandContext vcc;
 	Storage storage;
+	ThreadManager thread_manager;
 	ShaderRepository shader_repository;
 	FrameSettings frame_settings;
 	std::vector<Component*> components;

@@ -2,7 +2,10 @@
 
 #include <filesystem>
 #include <fstream>
+#include <unordered_set>
 #include <slang.h>
+#include "slang-com-ptr.h"
+#include "vkte/thread_manager.hpp"
 #include "vkte/vkte_log.hpp"
 
 namespace vkte
@@ -138,14 +141,16 @@ static Slang::ComPtr<slang::IBlob> compile_to_spirv(const Shader& shader, slang:
 	return spirv_blob;
 }
 
-ShaderRepository::ShaderRepository() = default;
+ShaderRepository::ShaderRepository(ThreadManager& thread_manager) : thread_manager(thread_manager)
+{}
+
 ShaderRepository::~ShaderRepository() = default;
 
 void ShaderRepository::construct(const vk::Device& device, const std::string& shader_root_dir)
 {
 	this->device = device;
 	this->shader_root_dir = shader_root_dir;
-	VKTE_ASSERT(SLANG_SUCCEEDED(slang::createGlobalSession(global_session.writeRef())), "vkte: Failed to create Slang global session");
+	global_sessions.resize(thread_manager.worker_count());
 }
 
 void ShaderRepository::destruct()
@@ -166,37 +171,61 @@ bool ShaderRepository::compile_all(const std::vector<const Shader*>& shaders)
 
 bool ShaderRepository::recompile_all()
 {
-	Slang::ComPtr<slang::ISession> session = create_session(global_session, shader_root_dir);
-
-	std::unordered_map<std::string, vk::ShaderModule> new_modules;
-	bool success = true;
-	for (const std::pair<const Shader*, vk::SpecializationInfo>& shader : shaders)
+	std::vector<const Shader*> unique_shaders;
+	std::unordered_set<std::string> seen_keys;
+	for (const std::pair<const Shader* const, vk::SpecializationInfo>& shader : shaders)
 	{
-		const std::string key = shader_key(*shader.first);
-		if (new_modules.contains(key)) continue;
+		if (seen_keys.insert(shader_key(*shader.first)).second) unique_shaders.push_back(shader.first);
+	}
 
-		Slang::ComPtr<slang::IBlob> spirv = compile_to_spirv(*shader.first, *session, shader_root_dir);
-		if (!spirv)
+	struct CompileResult
+	{
+		bool success = false;
+		std::string key;
+		vk::ShaderModule module;
+	};
+
+	std::vector<std::future<CompileResult>> futures;
+	futures.reserve(unique_shaders.size());
+	for (const Shader* shader : unique_shaders)
+	{
+		futures.push_back(thread_manager.run([this, shader](size_t worker_index) -> CompileResult
+		{
+			Slang::ComPtr<slang::IGlobalSession>& global_session = global_sessions[worker_index];
+			if (!global_session) VKTE_ASSERT(SLANG_SUCCEEDED(slang::createGlobalSession(global_session.writeRef())), "vkte: Failed to create Slang global session");
+			Slang::ComPtr<slang::ISession> session = create_session(global_session, shader_root_dir);
+			Slang::ComPtr<slang::IBlob> spirv = compile_to_spirv(*shader, *session, shader_root_dir);
+			if (!spirv) return {};
+
+			vk::ShaderModuleCreateInfo smci;
+			smci.codeSize = spirv->getBufferSize();
+			smci.pCode = static_cast<const uint32_t*>(spirv->getBufferPointer());
+			return {true, shader_key(*shader), device.createShaderModule(smci)};
+		}));
+	}
+
+	bool success = true;
+	std::vector<CompileResult> results;
+	results.reserve(unique_shaders.size());
+	for (std::future<CompileResult>& future : futures)
+	{
+		CompileResult result = future.get();
+		if (!result.success)
 		{
 			success = false;
 			continue;
 		}
-
-		vk::ShaderModuleCreateInfo smci;
-		smci.codeSize = spirv->getBufferSize();
-		smci.pCode = static_cast<const uint32_t*>(spirv->getBufferPointer());
-		new_modules[key] = device.createShaderModule(smci);
+		results.push_back(std::move(result));
 	}
 
 	if (!success)
 	{
-		for (const std::pair<const std::string, vk::ShaderModule>& entry : new_modules) device.destroyShaderModule(entry.second);
-		VKTE_ERROR("vkte: Failed to compile one or more shaders; keeping the previously compiled ones");
+		for (const CompileResult& result : results) device.destroyShaderModule(result.module);
 		return false;
 	}
 
 	destruct();
-	modules = std::move(new_modules);
+	for (CompileResult& result : results) modules[std::move(result.key)] = result.module;
 	return true;
 }
 

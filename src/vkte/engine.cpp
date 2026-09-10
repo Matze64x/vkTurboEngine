@@ -7,7 +7,7 @@
 
 namespace vkte
 {
-Engine::Engine(const EngineSettings& settings) : vcc(vmc), storage(vmc, vcc)
+Engine::Engine(const EngineSettings& settings) : vcc(vmc), storage(vmc, vcc), shader_repository(thread_manager)
 {
 #if ENABLE_VKTE_WINDOW
 	vmc.construct(settings.window_title, settings.window_width, settings.window_height, settings.features);

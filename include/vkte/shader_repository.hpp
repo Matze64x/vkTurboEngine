@@ -18,10 +18,12 @@ typedef ISlangBlob IBlob;
 
 namespace vkte
 {
+class ThreadManager;
+
 class ShaderRepository
 {
 public:
-	ShaderRepository();
+	explicit ShaderRepository(ThreadManager& thread_manager);
 	~ShaderRepository();
 
 	void construct(const vk::Device& device, const std::string& shader_root_dir);
@@ -33,8 +35,10 @@ public:
 private:
 	vk::Device device;
 	std::string shader_root_dir;
-	Slang::ComPtr<slang::IGlobalSession> global_session;
+	// one Slang global session per ThreadManager worker, created lazily by whichever worker first needs it
+	std::vector<Slang::ComPtr<slang::IGlobalSession>> global_sessions;
 	std::unordered_map<std::string, vk::ShaderModule> modules;
 	std::unordered_map<const Shader*, vk::SpecializationInfo> shaders;
+	ThreadManager& thread_manager;
 };
 } // namespace vkte
