@@ -51,9 +51,16 @@ public:
 	bool reload_shaders_all();
 	void destruct_all();
 
-	const Pipeline& get_pipeline(PipelineHandle handle) const;
+	const vk::Pipeline& get_pipeline(PipelineHandle handle) const;
+	const vk::PipelineLayout& get_pipeline_layout(PipelineHandle handle) const;
 	const vk::DescriptorSetLayout& get_descriptor_set_layout(DescriptorSetLayoutHandle handle) const;
 	const std::vector<vk::DescriptorSet>& get_descriptor_sets(DescriptorSetsHandle handle) const;
+	void wait_idle() const;
+	const vk::Device& get_device() const { return vmc.logical_device.get(); }
+	uint32_t get_queue_family_index(QueueFamilyFlags queue) const;
+#if ENABLE_VKTE_WINDOW
+	Window& get_window() { return vmc.window; }
+#endif
 	VulkanMainContext& get_vmc() { return vmc; }
 	VulkanCommandContext& get_vcc() { return vcc; }
 	Storage& get_storage() { return storage; }

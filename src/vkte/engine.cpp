@@ -31,10 +31,16 @@ void Engine::register_component(Component& component)
 	components.push_back(&component);
 }
 
-const Pipeline& Engine::get_pipeline(PipelineHandle handle) const
+const vk::Pipeline& Engine::get_pipeline(PipelineHandle handle) const
 {
 	VKTE_ASSERT(handle.valid() && handle.index < pipelines.size(), "vkte: Invalid pipeline handle!");
-	return pipelines.at(handle.index);
+	return pipelines.at(handle.index).get();
+}
+
+const vk::PipelineLayout& Engine::get_pipeline_layout(PipelineHandle handle) const
+{
+	VKTE_ASSERT(handle.valid() && handle.index < pipelines.size(), "vkte: Invalid pipeline handle!");
+	return pipelines.at(handle.index).get_layout();
 }
 
 const vk::DescriptorSetLayout& Engine::get_descriptor_set_layout(DescriptorSetLayoutHandle handle) const
@@ -205,6 +211,16 @@ void Engine::build_descriptor_sets()
 		}
 	}
 	vmc.logical_device.get().updateDescriptorSets(writes, {});
+}
+
+void Engine::wait_idle() const
+{
+	vmc.logical_device.get().waitIdle();
+}
+
+uint32_t Engine::get_queue_family_index(QueueFamilyFlags queue) const
+{
+	return vmc.queue_families.get(queue);
 }
 
 const char* Engine::owner_name(uint32_t component) const
