@@ -256,6 +256,16 @@ void Engine::resize(bool vsync)
 	swapchain.destruct(vmc, storage);
 	swapchain.construct(vmc, command, storage, vsync);
 }
+
+vk::ResultValue<uint32_t> Engine::acquire_next_image(vk::Semaphore semaphore) const
+{
+	return vmc.logical_device.get().acquireNextImageKHR(swapchain.get(), uint64_t(-1), semaphore);
+}
+
+vk::Result Engine::present(const vk::PresentInfoKHR& present_info) const
+{
+	return vmc.get_present_queue().presentKHR(present_info);
+}
 #endif
 
 SemaphoreHandle Engine::add_semaphore()

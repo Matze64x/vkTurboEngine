@@ -72,7 +72,6 @@ public:
 #if ENABLE_VKTE_WINDOW
 	Window& get_window() { return vmc.window; }
 #endif
-	VulkanMainContext& get_vmc() { return vmc; }
 	Command& get_command() { return command; }
 	Storage& get_storage() { return storage; }
 	ThreadManager& get_thread_manager() { return thread_manager; }
@@ -101,6 +100,8 @@ public:
 	void resize(bool vsync);
 	Swapchain& get_swapchain() { return swapchain; }
 	UI& get_ui() { return ui; }
+	vk::ResultValue<uint32_t> acquire_next_image(vk::Semaphore semaphore) const;
+	vk::Result present(const vk::PresentInfoKHR& present_info) const;
 #endif
 
 private:
