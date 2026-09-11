@@ -74,14 +74,14 @@ void ResourceDeclarations::add_descriptor(DescriptorSetsHandle handle, uint32_t 
 
 ResourceDeclarations::LayoutEntry& ResourceDeclarations::get_descriptor_set_layout(DescriptorSetLayoutHandle handle)
 {
-	VKTE_ASSERT(handle.valid() && handle.index < layouts.size(), "vkte: Invalid descriptor set layout handle!");
-	return *layouts[handle.index];
+	VKTE_ASSERT(handle.valid() && handle.id < layouts.size(), "vkte: Invalid descriptor set layout handle!");
+	return *layouts[handle.id];
 }
 
 ResourceDeclarations::SetsEntry& ResourceDeclarations::get_descriptor_sets(DescriptorSetsHandle handle)
 {
-	VKTE_ASSERT(handle.valid() && handle.index < sets.size(), "vkte: Invalid descriptor sets handle!");
-	return *sets[handle.index];
+	VKTE_ASSERT(handle.valid() && handle.id < sets.size(), "vkte: Invalid descriptor sets handle!");
+	return *sets[handle.id];
 }
 
 ResourceDeclarations::PipelineEntry::PipelineEntry(const Pipeline::GraphicsSettings& settings, DescriptorSetLayoutHandle layout, uint32_t owner)

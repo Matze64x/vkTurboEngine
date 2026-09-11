@@ -32,8 +32,8 @@ CommandBufferHandle Command::add_command_buffer(QueueFamilyFlags queue)
 
 vk::CommandBuffer& Command::get(CommandBufferHandle handle)
 {
-	VKTE_ASSERT(handle.valid() && handle.index < command_buffers.size(), "vkte: Invalid command buffer handle!");
-	return command_buffers.at(handle.index);
+	VKTE_ASSERT(handle.valid() && handle.id < command_buffers.size(), "vkte: Invalid command buffer handle!");
+	return command_buffers.at(handle.id);
 }
 
 vk::CommandBuffer& Command::begin(CommandBufferHandle handle)

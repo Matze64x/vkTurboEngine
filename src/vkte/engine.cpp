@@ -59,26 +59,26 @@ void Engine::register_component(Component& component)
 
 const vk::Pipeline& Engine::get_pipeline(PipelineHandle handle) const
 {
-	VKTE_ASSERT(handle.valid() && handle.index < pipelines.size(), "vkte: Invalid pipeline handle!");
-	return pipelines.at(handle.index).get();
+	VKTE_ASSERT(handle.valid() && handle.id < pipelines.size(), "vkte: Invalid pipeline handle!");
+	return pipelines.at(handle.id).get();
 }
 
 const vk::PipelineLayout& Engine::get_pipeline_layout(PipelineHandle handle) const
 {
-	VKTE_ASSERT(handle.valid() && handle.index < pipelines.size(), "vkte: Invalid pipeline handle!");
-	return pipelines.at(handle.index).get_layout();
+	VKTE_ASSERT(handle.valid() && handle.id < pipelines.size(), "vkte: Invalid pipeline handle!");
+	return pipelines.at(handle.id).get_layout();
 }
 
 const vk::DescriptorSetLayout& Engine::get_descriptor_set_layout(DescriptorSetLayoutHandle handle) const
 {
-	VKTE_ASSERT(handle.valid() && handle.index < descriptor_set_layouts.size(), "vkte: Invalid descriptor set layout handle!");
-	return descriptor_set_layouts.at(handle.index);
+	VKTE_ASSERT(handle.valid() && handle.id < descriptor_set_layouts.size(), "vkte: Invalid descriptor set layout handle!");
+	return descriptor_set_layouts.at(handle.id);
 }
 
 const std::vector<vk::DescriptorSet>& Engine::get_descriptor_sets(DescriptorSetsHandle handle) const
 {
-	VKTE_ASSERT(handle.valid() && handle.index < descriptor_sets.size(), "vkte: Invalid descriptor sets handle!");
-	return descriptor_sets.at(handle.index);
+	VKTE_ASSERT(handle.valid() && handle.id < descriptor_sets.size(), "vkte: Invalid descriptor sets handle!");
+	return descriptor_sets.at(handle.id);
 }
 
 void Engine::construct_components(
@@ -149,7 +149,7 @@ void Engine::build_pipelines()
 	{
 		const ResourceDeclarations::PipelineEntry& entry = *declarations.pipelines[i];
 		Pipeline& pipeline = pipelines[i];
-		vk::DescriptorSetLayout* set_layout = entry.layout.valid() ? &descriptor_set_layouts.at(entry.layout.index) : nullptr;
+		vk::DescriptorSetLayout* set_layout = entry.layout.valid() ? &descriptor_set_layouts.at(entry.layout.id) : nullptr;
 		if (entry.graphics_settings) pipeline.construct(*entry.graphics_settings, shader_repository, set_layout);
 		else if (entry.compute_settings) pipeline.construct(*entry.compute_settings, shader_repository, set_layout);
 		else VKTE_THROW("vkte: Pipeline with no valid settings!");
@@ -164,7 +164,7 @@ void Engine::build_descriptor_sets()
 	for (const std::unique_ptr<ResourceDeclarations::SetsEntry>& entry : declarations.sets)
 	{
 		total_sets += entry->set_count;
-		for (const vk::DescriptorSetLayoutBinding& binding : declarations.layouts.at(entry->layout.index)->bindings)
+		for (const vk::DescriptorSetLayoutBinding& binding : declarations.layouts.at(entry->layout.id)->bindings)
 		{
 			descriptor_counts[binding.descriptorType] += binding.descriptorCount * entry->set_count;
 		}
@@ -184,7 +184,7 @@ void Engine::build_descriptor_sets()
 	{
 		const ResourceDeclarations::SetsEntry& entry = *declarations.sets[i];
 		// all the same layout, to allocate every set of this declaration at once
-		std::vector<vk::DescriptorSetLayout> layouts(entry.set_count, descriptor_set_layouts.at(entry.layout.index));
+		std::vector<vk::DescriptorSetLayout> layouts(entry.set_count, descriptor_set_layouts.at(entry.layout.id));
 		vk::DescriptorSetAllocateInfo dsai;
 		dsai.descriptorPool = descriptor_pool;
 		dsai.descriptorSetCount = layouts.size();
@@ -267,15 +267,15 @@ SemaphoreHandle Engine::add_semaphore()
 
 void Engine::destroy(SemaphoreHandle handle)
 {
-	VKTE_ASSERT(handle.valid() && handle.index < semaphores.size(), "vkte: Invalid semaphore handle!");
-	vmc.logical_device.get().destroySemaphore(semaphores.at(handle.index));
-	semaphores.at(handle.index) = vk::Semaphore();
+	VKTE_ASSERT(handle.valid() && handle.id < semaphores.size(), "vkte: Invalid semaphore handle!");
+	vmc.logical_device.get().destroySemaphore(semaphores.at(handle.id));
+	semaphores.at(handle.id) = vk::Semaphore();
 }
 
 vk::Semaphore Engine::get(SemaphoreHandle handle) const
 {
-	VKTE_ASSERT(handle.valid() && handle.index < semaphores.size(), "vkte: Invalid semaphore handle!");
-	return semaphores.at(handle.index);
+	VKTE_ASSERT(handle.valid() && handle.id < semaphores.size(), "vkte: Invalid semaphore handle!");
+	return semaphores.at(handle.id);
 }
 
 FenceHandle Engine::add_fence()
@@ -289,15 +289,15 @@ FenceHandle Engine::add_fence()
 
 void Engine::destroy(FenceHandle handle)
 {
-	VKTE_ASSERT(handle.valid() && handle.index < fences.size(), "vkte: Invalid fence handle!");
-	vmc.logical_device.get().destroyFence(fences.at(handle.index));
-	fences.at(handle.index) = vk::Fence();
+	VKTE_ASSERT(handle.valid() && handle.id < fences.size(), "vkte: Invalid fence handle!");
+	vmc.logical_device.get().destroyFence(fences.at(handle.id));
+	fences.at(handle.id) = vk::Fence();
 }
 
 vk::Fence Engine::get(FenceHandle handle) const
 {
-	VKTE_ASSERT(handle.valid() && handle.index < fences.size(), "vkte: Invalid fence handle!");
-	return fences.at(handle.index);
+	VKTE_ASSERT(handle.valid() && handle.id < fences.size(), "vkte: Invalid fence handle!");
+	return fences.at(handle.id);
 }
 
 void Engine::wait_for_fence(FenceHandle handle) const
@@ -323,14 +323,14 @@ DeviceTimerHandle Engine::add_device_timer(uint32_t timer_count)
 
 void Engine::destroy(DeviceTimerHandle handle)
 {
-	VKTE_ASSERT(handle.valid() && handle.index < device_timers.size() && device_timers.at(handle.index), "vkte: Invalid device timer handle!");
-	device_timers.at(handle.index).reset();
+	VKTE_ASSERT(handle.valid() && handle.id < device_timers.size() && device_timers.at(handle.id), "vkte: Invalid device timer handle!");
+	device_timers.at(handle.id).reset();
 }
 
 DeviceTimer& Engine::get(DeviceTimerHandle handle) const
 {
-	VKTE_ASSERT(handle.valid() && handle.index < device_timers.size() && device_timers.at(handle.index), "vkte: Invalid device timer handle!");
-	return *device_timers.at(handle.index);
+	VKTE_ASSERT(handle.valid() && handle.id < device_timers.size() && device_timers.at(handle.id), "vkte: Invalid device timer handle!");
+	return *device_timers.at(handle.id);
 }
 
 AccelerationStructureBuilderHandle Engine::add_acceleration_structure_builder()
@@ -341,14 +341,14 @@ AccelerationStructureBuilderHandle Engine::add_acceleration_structure_builder()
 
 void Engine::destroy(AccelerationStructureBuilderHandle handle)
 {
-	VKTE_ASSERT(handle.valid() && handle.index < acceleration_structure_builders.size() && acceleration_structure_builders.at(handle.index), "vkte: Invalid acceleration structure builder handle!");
-	acceleration_structure_builders.at(handle.index).reset();
+	VKTE_ASSERT(handle.valid() && handle.id < acceleration_structure_builders.size() && acceleration_structure_builders.at(handle.id), "vkte: Invalid acceleration structure builder handle!");
+	acceleration_structure_builders.at(handle.id).reset();
 }
 
 AccelerationStructureBuilder& Engine::get(AccelerationStructureBuilderHandle handle) const
 {
-	VKTE_ASSERT(handle.valid() && handle.index < acceleration_structure_builders.size() && acceleration_structure_builders.at(handle.index), "vkte: Invalid acceleration structure builder handle!");
-	return *acceleration_structure_builders.at(handle.index);
+	VKTE_ASSERT(handle.valid() && handle.id < acceleration_structure_builders.size() && acceleration_structure_builders.at(handle.id), "vkte: Invalid acceleration structure builder handle!");
+	return *acceleration_structure_builders.at(handle.id);
 }
 
 const char* Engine::owner_name(uint32_t component) const
