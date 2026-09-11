@@ -9,27 +9,31 @@ namespace vkte
 {
 Engine::Engine(const EngineSettings& settings) : command(vmc), storage(vmc, command), shader_repository(thread_manager)
 {
-#if ENABLE_VKTE_WINDOW
-	window.construct(settings.window_title, settings.window_width, settings.window_height);
-	vmc.construct(window, settings.features);
-#else
-	vmc.construct(settings.features);
-#endif
+	if (settings.enable_window)
+	{
+		window = std::make_unique<Window>();
+		window->construct(settings.window_title, settings.window_width, settings.window_height);
+	}
+	vmc.construct(settings.features, window);
 	command.construct();
 	shader_repository.construct(vmc.logical_device.get(), settings.shader_root_dir);
-#if ENABLE_VKTE_WINDOW
-	SwapchainSettings swapchain_settings = Swapchain::choose_settings(vmc.physical_device, window, vmc.surface, settings.vsync);
-	swapchain.construct(vmc.logical_device.get(), vmc.queue_families, swapchain_settings, command, storage);
-	ui.construct(vmc, swapchain, window.get());
-#endif
+	if (window)
+	{
+		SwapchainSettings swapchain_settings = Swapchain::choose_settings(vmc.physical_device, *window, vmc.surface, settings.vsync);
+		swapchain = std::make_unique<Swapchain>();
+		swapchain->construct(vmc.logical_device.get(), vmc.queue_families, swapchain_settings, command, storage);
+		ui = std::make_unique<UI>();
+		ui->construct(vmc, *swapchain, window->get());
+	}
 }
 
 Engine::~Engine()
 {
-#if ENABLE_VKTE_WINDOW
-	ui.destruct(vmc);
-	swapchain.destruct(vmc.logical_device.get(), storage);
-#endif
+	if (window)
+	{
+		ui->destruct(vmc);
+		swapchain->destruct(vmc.logical_device.get(), storage);
+	}
 	storage.clear();
 	for (const vk::Semaphore& semaphore : semaphores)
 	{
@@ -43,9 +47,7 @@ Engine::~Engine()
 	shader_repository.destruct();
 	command.destruct();
 	vmc.destruct();
-#if ENABLE_VKTE_WINDOW
-	window.destruct();
-#endif
+	if (window) window->destruct();
 }
 
 void Engine::register_component(Component& component)
@@ -77,15 +79,9 @@ const std::vector<vk::DescriptorSet>& Engine::get_descriptor_sets(DescriptorSets
 	return descriptor_sets.at(handle.id);
 }
 
-void Engine::construct_components(
-#if ENABLE_VKTE_WINDOW
-	const FrameSettings& settings
-#endif
-)
+void Engine::construct_components(const FrameSettings& settings)
 {
-#if ENABLE_VKTE_WINDOW
 	frame_settings = settings;
-#endif
 	for (uint32_t i = 0; i < components.size(); i++)
 	{
 		declarations.declaring_component = i;
@@ -245,24 +241,43 @@ uint32_t Engine::get_queue_family_index(QueueFamilyFlags queue) const
 	return vmc.queue_families.get(queue);
 }
 
-#if ENABLE_VKTE_WINDOW
 void Engine::resize(bool vsync)
 {
-	swapchain.destruct(vmc.logical_device.get(), storage);
-	SwapchainSettings swapchain_settings = Swapchain::choose_settings(vmc.physical_device, window, vmc.surface, vsync);
-	swapchain.construct(vmc.logical_device.get(), vmc.queue_families, swapchain_settings, command, storage);
+	VKTE_ASSERT(window && swapchain, "vkte: Engine has no window; EngineSettings::enable_window was false!");
+	swapchain->destruct(vmc.logical_device.get(), storage);
+	SwapchainSettings swapchain_settings = Swapchain::choose_settings(vmc.physical_device, *window, vmc.surface, vsync);
+	swapchain->construct(vmc.logical_device.get(), vmc.queue_families, swapchain_settings, command, storage);
 }
 
 vk::ResultValue<uint32_t> Engine::acquire_next_image(vk::Semaphore semaphore) const
 {
-	return vmc.logical_device.get().acquireNextImageKHR(swapchain.get(), uint64_t(-1), semaphore);
+	VKTE_ASSERT(swapchain, "vkte: Engine has no swapchain; EngineSettings::enable_window was false!");
+	return vmc.logical_device.get().acquireNextImageKHR(swapchain->get(), uint64_t(-1), semaphore);
 }
 
 vk::Result Engine::present(const vk::PresentInfoKHR& present_info) const
 {
+	VKTE_ASSERT(window, "vkte: Engine has no window; EngineSettings::enable_window was false!");
 	return vmc.get_present_queue().presentKHR(present_info);
 }
-#endif
+
+Window& Engine::get_window()
+{
+	VKTE_ASSERT(window, "vkte: Engine has no window; EngineSettings::enable_window was false!");
+	return *window;
+}
+
+Swapchain& Engine::get_swapchain()
+{
+	VKTE_ASSERT(swapchain, "vkte: Engine has no swapchain; EngineSettings::enable_window was false!");
+	return *swapchain;
+}
+
+UI& Engine::get_ui()
+{
+	VKTE_ASSERT(ui, "vkte: Engine has no UI; EngineSettings::enable_window was false!");
+	return *ui;
+}
 
 SemaphoreHandle Engine::add_semaphore()
 {

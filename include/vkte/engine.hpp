@@ -15,10 +15,8 @@
 #include "vkte/thread_manager.hpp"
 #include "vkte/command.hpp"
 #include "vkte/vulkan_main_context.hpp"
-#if ENABLE_VKTE_WINDOW
 #include "vkte_window/window.hpp"
 #include "vkte_window/ui.hpp"
-#endif
 
 namespace vkte
 {
@@ -26,12 +24,11 @@ struct EngineSettings
 {
 	Features features;
 	std::string shader_root_dir;
-#if ENABLE_VKTE_WINDOW
+	bool enable_window = true;
 	std::string window_title = "vkte";
 	uint32_t window_width = 1920;
 	uint32_t window_height = 1080;
 	bool vsync = true;
-#endif
 };
 
 struct FrameSettings
@@ -51,11 +48,7 @@ public:
 	// the component must outlive the Engine
 	void register_component(Component& component);
 	// collects every component's declarations and builds all of them
-#if ENABLE_VKTE_WINDOW
-	void construct_components(const FrameSettings& settings);
-#else
-	void construct_components();
-#endif
+	void construct_components(const FrameSettings& settings = FrameSettings());
 	// recompiles and rebuilds every declared pipeline; returns false if any compile failed, in which case no pipeline is rebuilt and every old one stays usable
 	bool reload_shaders_all();
 	void destruct_components();
@@ -67,9 +60,7 @@ public:
 	void wait_idle() const;
 	const vk::Device& get_device() const { return vmc.logical_device.get(); }
 	uint32_t get_queue_family_index(QueueFamilyFlags queue) const;
-#if ENABLE_VKTE_WINDOW
-	Window& get_window() { return window; }
-#endif
+	Window& get_window();
 	Command& get_command() { return command; }
 	Storage& get_storage() { return storage; }
 	ThreadManager& get_thread_manager() { return thread_manager; }
@@ -94,18 +85,14 @@ public:
 	void destroy(AccelerationStructureBuilderHandle handle);
 	AccelerationStructureBuilder& get(AccelerationStructureBuilderHandle handle) const;
 
-#if ENABLE_VKTE_WINDOW
 	void resize(bool vsync);
-	Swapchain& get_swapchain() { return swapchain; }
-	UI& get_ui() { return ui; }
+	Swapchain& get_swapchain();
+	UI& get_ui();
 	vk::ResultValue<uint32_t> acquire_next_image(vk::Semaphore semaphore) const;
 	vk::Result present(const vk::PresentInfoKHR& present_info) const;
-#endif
 
 private:
-#if ENABLE_VKTE_WINDOW
-	Window window;
-#endif
+	std::unique_ptr<Window> window;
 	VulkanMainContext vmc;
 	Command command;
 	Storage storage;
@@ -122,10 +109,8 @@ private:
 	std::vector<vk::Fence> fences;
 	std::vector<std::unique_ptr<DeviceTimer>> device_timers;
 	std::vector<std::unique_ptr<AccelerationStructureBuilder>> acceleration_structure_builders;
-#if ENABLE_VKTE_WINDOW
-	Swapchain swapchain;
-	UI ui;
-#endif
+	std::unique_ptr<Swapchain> swapchain;
+	std::unique_ptr<UI> ui;
 
 	void build_descriptor_set_layouts();
 	void build_pipelines();

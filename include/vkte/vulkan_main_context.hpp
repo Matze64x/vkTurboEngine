@@ -1,5 +1,6 @@
 #pragma once
 
+#include <memory>
 #include "vulkan/vulkan.hpp"
 #include "vkte/queue_families.hpp"
 #include "vkte/logical_device.hpp"
@@ -8,9 +9,7 @@
 
 namespace vkte
 {
-#if ENABLE_VKTE_WINDOW
 class Window;
-#endif
 
 struct Features
 {
@@ -23,11 +22,7 @@ class VulkanMainContext
 {
 public:
 	VulkanMainContext() = default;
-#if ENABLE_VKTE_WINDOW
-	void construct(Window& window, const Features& features);
-#else
-	void construct(const Features& features);
-#endif
+	void construct(const Features& features, std::unique_ptr<Window>& window);
 	void destruct();
 	const vk::Queue& get_graphics_queue() const;
 	const vk::Queue& get_transfer_queue() const;

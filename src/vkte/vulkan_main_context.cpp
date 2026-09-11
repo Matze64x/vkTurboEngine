@@ -1,10 +1,8 @@
 #include "vkte/vulkan_main_context.hpp"
 
 #include "vkte/vkte_log.hpp"
-#if ENABLE_VKTE_WINDOW
 #include "vkte_window/window.hpp"
 #include <SDL3/SDL_vulkan.h>
-#endif
 #define VMA_STATIC_VULKAN_FUNCTIONS 0
 #define VMA_DYNAMIC_VULKAN_FUNCTIONS 1
 #define VMA_IMPLEMENTATION
@@ -34,50 +32,24 @@ static VKAPI_ATTR vk::Bool32 VKAPI_CALL debug_callback(vk::DebugUtilsMessageSeve
 
 namespace vkte
 {
-#if ENABLE_VKTE_WINDOW
-void VulkanMainContext::construct(Window& window, const Features& features)
-{
-	this->features = features;
-	PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr = dl.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
-	VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
-	window.hide();
-	uint32_t extension_count;
-	const char* const* extensions_sdl = SDL_Vulkan_GetInstanceExtensions(&extension_count);
-	std::vector<const char*> instance_extensions(extensions_sdl, extensions_sdl + extension_count);
-	std::vector<const char*> validation_layers;
-	if (features.khronos_validation) validation_layers.push_back("VK_LAYER_KHRONOS_validation");
-	instance.construct(instance_extensions, validation_layers);
-	VULKAN_HPP_DEFAULT_DISPATCHER.init(instance.get());
-	surface = window.create_surface(instance.get());
-	std::vector<const char*> device_extensions;
-	if (features.swapchain) device_extensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
-	if (features.device_features.acceleration_structure)
-	{
-		device_extensions.push_back(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
-		device_extensions.push_back(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);
-	}
-	if (features.device_features.ray_query) device_extensions.push_back(VK_KHR_RAY_QUERY_EXTENSION_NAME);
-	if (features.device_features.dynamic_polygon_mode) device_extensions.push_back(VK_EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME);
-	if (features.device_features.shader_atomic_float) device_extensions.push_back(VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME);
-	physical_device.construct(instance, device_extensions, surface);
-	queue_families.construct(physical_device.get(), surface);
-	logical_device.construct(physical_device, features.device_features, queue_families, queues);
-	VULKAN_HPP_DEFAULT_DISPATCHER.init(logical_device.get());
-	create_vma_allocator();
-	setup_debug_messenger();
-	window.show();
-}
-#else
-void VulkanMainContext::construct(const Features& features)
+void VulkanMainContext::construct(const Features& features, std::unique_ptr<Window>& window)
 {
 	this->features = features;
 	PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr = dl.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
 	VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
 	std::vector<const char*> instance_extensions;
+	if (window)
+	{
+		window->hide();
+		uint32_t extension_count;
+		const char* const* extensions_sdl = SDL_Vulkan_GetInstanceExtensions(&extension_count);
+		instance_extensions.assign(extensions_sdl, extensions_sdl + extension_count);
+	}
 	std::vector<const char*> validation_layers;
 	if (features.khronos_validation) validation_layers.push_back("VK_LAYER_KHRONOS_validation");
 	instance.construct(instance_extensions, validation_layers);
 	VULKAN_HPP_DEFAULT_DISPATCHER.init(instance.get());
+	if (window) surface = window->create_surface(instance.get());
 	std::vector<const char*> device_extensions;
 	if (features.swapchain) device_extensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
 	if (features.device_features.acceleration_structure)
@@ -88,15 +60,15 @@ void VulkanMainContext::construct(const Features& features)
 	if (features.device_features.ray_query) device_extensions.push_back(VK_KHR_RAY_QUERY_EXTENSION_NAME);
 	if (features.device_features.dynamic_polygon_mode) device_extensions.push_back(VK_EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME);
 	if (features.device_features.shader_atomic_float) device_extensions.push_back(VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME);
-	physical_device.construct(instance, device_extensions, std::nullopt);
-	queue_families.construct(physical_device.get(), {});
+	physical_device.construct(instance, device_extensions, window ? std::optional(surface) : std::nullopt);
+	if (window) queue_families.construct(physical_device.get(), surface);
+	else queue_families.construct(physical_device.get());
 	logical_device.construct(physical_device, features.device_features, queue_families, queues);
 	VULKAN_HPP_DEFAULT_DISPATCHER.init(logical_device.get());
 	create_vma_allocator();
 	setup_debug_messenger();
+	if (window) window->show();
 }
-#endif
-
 
 void VulkanMainContext::destruct()
 {

@@ -29,6 +29,6 @@ private:
 	SDL_Window* get() const;
 	vk::SurfaceKHR create_surface(const vk::Instance& instance);
 
-	SDL_Window* window;
+	SDL_Window* window = nullptr;
 };
 } // namespace vkte
