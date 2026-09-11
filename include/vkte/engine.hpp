@@ -10,6 +10,7 @@
 #include "vkte/resource_handles.hpp"
 #include "vkte/shader_repository.hpp"
 #include "vkte/storage.hpp"
+#include "vkte/swapchain.hpp"
 #include "vkte/thread_manager.hpp"
 #include "vkte/vulkan_command_context.hpp"
 #include "vkte/vulkan_main_context.hpp"
@@ -24,6 +25,8 @@ struct EngineSettings
 	std::string window_title = "vkte";
 	uint32_t window_width = 1920;
 	uint32_t window_height = 1080;
+	bool create_swapchain = false;
+	bool vsync = true;
 #endif
 };
 
@@ -84,6 +87,11 @@ public:
 	void destroy(DeviceTimerHandle handle);
 	DeviceTimer& get(DeviceTimerHandle handle) const;
 
+#if ENABLE_VKTE_WINDOW
+	void resize(bool vsync);
+	Swapchain& get_swapchain() { return swapchain; }
+#endif
+
 private:
 	VulkanMainContext vmc;
 	VulkanCommandContext vcc;
@@ -100,6 +108,10 @@ private:
 	std::vector<vk::Semaphore> semaphores;
 	std::vector<vk::Fence> fences;
 	std::vector<std::unique_ptr<DeviceTimer>> device_timers;
+#if ENABLE_VKTE_WINDOW
+	Swapchain swapchain;
+	bool swapchain_constructed = false;
+#endif
 
 	void build_descriptor_set_layouts();
 	void build_pipelines();

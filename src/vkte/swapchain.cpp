@@ -1,14 +1,10 @@
 #include "vkte/swapchain.hpp"
 
-#include "SDL3/SDL_events.h"
-#include "SDL3/SDL_vulkan.h"
+#include "SDL3/SDL_video.h"
 #include "vkte/vkte_log.hpp"
 
 namespace vkte
 {
-Swapchain::Swapchain(const VulkanMainContext& vmc, VulkanCommandContext& vcc, Storage& storage) : vmc(vmc), vcc(vcc), storage(storage)
-{}
-
 const vk::SwapchainKHR& Swapchain::get() const
 {
 	return swapchain;
@@ -31,12 +27,12 @@ vk::Image Swapchain::get_image(uint32_t idx) const
 
 vk::ImageView Swapchain::get_depth_view() const
 {
-	return storage.get_image(depth_buffer).get_view();
+	return depth_view;
 }
 
 vk::Image Swapchain::get_depth_image() const
 {
-	return storage.get_image(depth_buffer).get_image();
+	return depth_image;
 }
 
 vk::Format Swapchain::get_color_format() const
@@ -54,18 +50,21 @@ uint32_t Swapchain::get_image_count() const
 	return images.size();
 }
 
-void Swapchain::construct(bool vsync)
+void Swapchain::construct(const VulkanMainContext& vmc, VulkanCommandContext& vcc, Storage& storage, bool vsync)
 {
-	extent = choose_extent();
-	surface_format = choose_surface_format();
-	depth_format = choose_depth_format();
-	swapchain = create_swapchain(vsync);
+	extent = choose_extent(vmc);
+	surface_format = choose_surface_format(vmc);
+	depth_format = choose_depth_format(vmc);
+	swapchain = create_swapchain(vmc, vsync);
 	depth_buffer = storage.add_image("depth_buffer", extent.width, extent.height, vk::ImageUsageFlagBits::eDepthStencilAttachment, depth_format, vk::SampleCountFlagBits::e1, false, 0, QueueFamilyFlags::Graphics);
-	storage.get_image(depth_buffer).transition_image_layout(vcc, vk::ImageLayout::eDepthStencilAttachmentOptimal, vk::PipelineStageFlagBits2::eTopOfPipe, vk::PipelineStageFlagBits2::eEarlyFragmentTests | vk::PipelineStageFlagBits2::eLateFragmentTests, vk::AccessFlagBits2::eNone, vk::AccessFlagBits2::eDepthStencilAttachmentRead | vk::AccessFlagBits2::eDepthStencilAttachmentWrite);
-	create_images();
+	Image& depth_buffer_image = storage.get_image(depth_buffer);
+	depth_buffer_image.transition_image_layout(vcc, vk::ImageLayout::eDepthStencilAttachmentOptimal, vk::PipelineStageFlagBits2::eTopOfPipe, vk::PipelineStageFlagBits2::eEarlyFragmentTests | vk::PipelineStageFlagBits2::eLateFragmentTests, vk::AccessFlagBits2::eNone, vk::AccessFlagBits2::eDepthStencilAttachmentRead | vk::AccessFlagBits2::eDepthStencilAttachmentWrite);
+	depth_image = depth_buffer_image.get_image();
+	depth_view = depth_buffer_image.get_view();
+	create_images(vmc);
 }
 
-void Swapchain::destruct()
+void Swapchain::destruct(const VulkanMainContext& vmc, Storage& storage)
 {
 	for (auto& image_view : image_views) vmc.logical_device.get().destroyImageView(image_view);
 	image_views.clear();
@@ -73,13 +72,7 @@ void Swapchain::destruct()
 	vmc.logical_device.get().destroySwapchainKHR(swapchain);
 }
 
-void Swapchain::recreate(bool vsync)
-{
-	destruct();
-	construct(vsync);
-}
-
-vk::SwapchainKHR Swapchain::create_swapchain(bool vsync)
+vk::SwapchainKHR Swapchain::create_swapchain(const VulkanMainContext& vmc, bool vsync)
 {
 	vk::SurfaceCapabilitiesKHR capabilities = vmc.get_surface_capabilities();
 	uint32_t image_count = capabilities.maxImageCount > 0 ? std::min(capabilities.minImageCount + 1, capabilities.maxImageCount) : capabilities.minImageCount + 1;
@@ -94,7 +87,7 @@ vk::SwapchainKHR Swapchain::create_swapchain(bool vsync)
 	sci.imageUsage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferSrc;
 	sci.preTransform = capabilities.currentTransform;
 	sci.compositeAlpha = vk::CompositeAlphaFlagBitsKHR::eOpaque;
-	sci.presentMode = choose_present_mode(vsync);
+	sci.presentMode = choose_present_mode(vmc, vsync);
 	sci.clipped = VK_TRUE;
 	sci.oldSwapchain = VK_NULL_HANDLE;
 	std::vector<uint32_t> queue_family_indices = vmc.queue_families.get(QueueFamilyFlags::Graphics | QueueFamilyFlags::Present);
@@ -111,7 +104,7 @@ vk::SwapchainKHR Swapchain::create_swapchain(bool vsync)
 	return vmc.logical_device.get().createSwapchainKHR(sci);
 }
 
-void Swapchain::create_images()
+void Swapchain::create_images(const VulkanMainContext& vmc)
 {
 	images = vmc.logical_device.get().getSwapchainImagesKHR(swapchain);
 
@@ -134,7 +127,7 @@ void Swapchain::create_images()
 	}
 }
 
-vk::PresentModeKHR Swapchain::choose_present_mode(bool vsync)
+vk::PresentModeKHR Swapchain::choose_present_mode(const VulkanMainContext& vmc, bool vsync)
 {
 	std::vector<vk::PresentModeKHR> present_modes = vmc.get_surface_present_modes();
 	for (const auto& pm : present_modes)
@@ -145,7 +138,7 @@ vk::PresentModeKHR Swapchain::choose_present_mode(bool vsync)
 	return vk::PresentModeKHR::eFifo;
 }
 
-vk::Extent2D Swapchain::choose_extent()
+vk::Extent2D Swapchain::choose_extent(const VulkanMainContext& vmc)
 {
 	const vk::SurfaceCapabilitiesKHR capabilities = vmc.get_surface_capabilities();
 	if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
@@ -168,7 +161,7 @@ vk::Extent2D Swapchain::choose_extent()
 	return chosen;
 }
 
-vk::SurfaceFormatKHR Swapchain::choose_surface_format()
+vk::SurfaceFormatKHR Swapchain::choose_surface_format(const VulkanMainContext& vmc)
 {
 	std::vector<vk::SurfaceFormatKHR> formats = vmc.get_surface_formats();
 	for (const auto& format : formats)
@@ -178,7 +171,7 @@ vk::SurfaceFormatKHR Swapchain::choose_surface_format()
 	return formats[0];
 }
 
-vk::Format Swapchain::choose_depth_format()
+vk::Format Swapchain::choose_depth_format(const VulkanMainContext& vmc)
 {
 	std::vector<vk::Format> candidates{vk::Format::eD24UnormS8Uint, vk::Format::eD32Sfloat, vk::Format::eD32SfloatS8Uint};
 	for (vk::Format format : candidates)

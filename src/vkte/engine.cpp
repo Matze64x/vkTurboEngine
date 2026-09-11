@@ -16,10 +16,20 @@ Engine::Engine(const EngineSettings& settings) : vcc(vmc), storage(vmc, vcc), sh
 #endif
 	vcc.construct();
 	shader_repository.construct(vmc.logical_device.get(), settings.shader_root_dir);
+#if ENABLE_VKTE_WINDOW
+	if (settings.create_swapchain)
+	{
+		swapchain.construct(vmc, vcc, storage, settings.vsync);
+		swapchain_constructed = true;
+	}
+#endif
 }
 
 Engine::~Engine()
 {
+#if ENABLE_VKTE_WINDOW
+	if (swapchain_constructed) swapchain.destruct(vmc, storage);
+#endif
 	storage.clear();
 	for (const vk::Semaphore& semaphore : semaphores)
 	{
@@ -231,6 +241,15 @@ uint32_t Engine::get_queue_family_index(QueueFamilyFlags queue) const
 {
 	return vmc.queue_families.get(queue);
 }
+
+#if ENABLE_VKTE_WINDOW
+void Engine::resize(bool vsync)
+{
+	VKTE_ASSERT(swapchain_constructed, "vkte: Trying to resize a swapchain that was never constructed! Set EngineSettings::create_swapchain.");
+	swapchain.destruct(vmc, storage);
+	swapchain.construct(vmc, vcc, storage, vsync);
+}
+#endif
 
 SemaphoreHandle Engine::add_semaphore()
 {
