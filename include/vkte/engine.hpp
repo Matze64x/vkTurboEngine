@@ -1,8 +1,10 @@
 #pragma once
 
+#include <memory>
 #include <string>
 #include <vector>
 #include "vkte/component.hpp"
+#include "vkte/device_timer.hpp"
 #include "vkte/pipeline.hpp"
 #include "vkte/resource_declarations.hpp"
 #include "vkte/resource_handles.hpp"
@@ -43,13 +45,13 @@ public:
 	void register_component(Component& component);
 	// collects every component's declarations and builds all of them
 #if ENABLE_VKTE_WINDOW
-	void construct_all(const FrameSettings& settings);
+	void construct_components(const FrameSettings& settings);
 #else
-	void construct_all();
+	void construct_components();
 #endif
 	// recompiles and rebuilds every declared pipeline; returns false if any compile failed, in which case no pipeline is rebuilt and every old one stays usable
 	bool reload_shaders_all();
-	void destruct_all();
+	void destruct_components();
 
 	const vk::Pipeline& get_pipeline(PipelineHandle handle) const;
 	const vk::PipelineLayout& get_pipeline_layout(PipelineHandle handle) const;
@@ -66,6 +68,22 @@ public:
 	Storage& get_storage() { return storage; }
 	ThreadManager& get_thread_manager() { return thread_manager; }
 
+	SemaphoreHandle add_semaphore();
+	void destroy(SemaphoreHandle handle);
+	vk::Semaphore get(SemaphoreHandle handle) const;
+
+	FenceHandle add_fence();
+	void destroy(FenceHandle handle);
+	vk::Fence get(FenceHandle handle) const;
+	void wait_for_fence(FenceHandle handle) const;
+	void reset_fence(FenceHandle handle) const;
+	bool is_fence_finished(FenceHandle handle) const;
+
+	// timer_count named timestamp slots backed by a single query pool
+	DeviceTimerHandle add_device_timer(uint32_t timer_count);
+	void destroy(DeviceTimerHandle handle);
+	DeviceTimer& get(DeviceTimerHandle handle) const;
+
 private:
 	VulkanMainContext vmc;
 	VulkanCommandContext vcc;
@@ -79,6 +97,9 @@ private:
 	std::vector<vk::DescriptorSetLayout> descriptor_set_layouts;
 	std::vector<std::vector<vk::DescriptorSet>> descriptor_sets;
 	std::vector<vkte::Pipeline> pipelines;
+	std::vector<vk::Semaphore> semaphores;
+	std::vector<vk::Fence> fences;
+	std::vector<std::unique_ptr<DeviceTimer>> device_timers;
 
 	void build_descriptor_set_layouts();
 	void build_pipelines();

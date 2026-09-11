@@ -6,28 +6,22 @@
 
 namespace vkte
 {
+class Engine;
+
 class DeviceTimer
 {
 public:
-	DeviceTimer(const VulkanMainContext& vmc);
-	void construct(uint32_t timer_count);
-	void destruct();
+	~DeviceTimer();
 	void reset(vk::CommandBuffer& cb, uint32_t timer_index);
 	void reset_all(vk::CommandBuffer& cb);
 	void start(vk::CommandBuffer& cb, uint32_t timer_index, vk::PipelineStageFlagBits stage);
 	void stop(vk::CommandBuffer& cb, uint32_t timer_index, vk::PipelineStageFlagBits stage);
 
 	template<class Precision = std::milli>
-	double inline get_result_by_idx(uint32_t i)
+	double inline get_result(uint32_t i)
 	{
 		VKTE_ASSERT(i < result_fetched.size(), "vkte: Trying to access invalid timer index.");
 		return fetch_result<Precision>(i);
-	}
-
-	template<class Precision = std::milli>
-	double inline get_result(uint32_t timer_index)
-	{
-		return fetch_result<Precision>(timer_index);
 	}
 
 private:
@@ -41,6 +35,9 @@ private:
 		vk::Result result = vmc.logical_device.get().getQueryPoolResults(qp, i * 2, 2, results.size() * sizeof(uint64_t), results.data(), sizeof(uint64_t), vk::QueryResultFlagBits::e64);
 		return (result == vk::Result::eSuccess) ? (double(timestamp_period * (results[1] - results[0])) / double(std::ratio_divide<std::nano, Precision>::den)) : -1.0;
 	}
+
+	friend class Engine;
+	DeviceTimer(const VulkanMainContext& vmc, uint32_t timer_count);
 
 	const VulkanMainContext& vmc;
 	vk::QueryPool qp;

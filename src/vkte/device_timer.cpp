@@ -2,10 +2,7 @@
 
 namespace vkte
 {
-DeviceTimer::DeviceTimer(const VulkanMainContext& vmc) : vmc(vmc)
-{}
-
-void DeviceTimer::construct(uint32_t timer_count)
+DeviceTimer::DeviceTimer(const VulkanMainContext& vmc, uint32_t timer_count) : vmc(vmc)
 {
 	result_fetched.resize(timer_count, true);
 	vk::QueryPoolCreateInfo qpci;
@@ -16,7 +13,7 @@ void DeviceTimer::construct(uint32_t timer_count)
 	timestamp_period = pdp.limits.timestampPeriod;
 }
 
-void DeviceTimer::destruct()
+DeviceTimer::~DeviceTimer()
 {
 	vmc.logical_device.get().destroyQueryPool(qp);
 }

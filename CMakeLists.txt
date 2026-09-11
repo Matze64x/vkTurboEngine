@@ -26,7 +26,6 @@ set(SOURCE_FILES
 	src/vkte/shader.cpp
 	src/vkte/shader_repository.cpp
 	src/vkte/storage.cpp
-	src/vkte/synchronization.cpp
 	src/vkte/thread_manager.cpp
 	src/vkte/vulkan_command_context.cpp
 	src/vkte/vulkan_main_context.cpp

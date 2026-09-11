@@ -21,6 +21,15 @@ Engine::Engine(const EngineSettings& settings) : vcc(vmc), storage(vmc, vcc), sh
 Engine::~Engine()
 {
 	storage.clear();
+	for (const vk::Semaphore& semaphore : semaphores)
+	{
+		if (semaphore) vmc.logical_device.get().destroySemaphore(semaphore);
+	}
+	for (const vk::Fence& fence : fences)
+	{
+		if (fence) vmc.logical_device.get().destroyFence(fence);
+	}
+	device_timers.clear();
 	shader_repository.destruct();
 	vcc.destruct();
 	vmc.destruct();
@@ -55,7 +64,7 @@ const std::vector<vk::DescriptorSet>& Engine::get_descriptor_sets(DescriptorSets
 	return descriptor_sets.at(handle.index);
 }
 
-void Engine::construct_all(
+void Engine::construct_components(
 #if ENABLE_VKTE_WINDOW
 	const FrameSettings& settings
 #endif
@@ -223,6 +232,81 @@ uint32_t Engine::get_queue_family_index(QueueFamilyFlags queue) const
 	return vmc.queue_families.get(queue);
 }
 
+SemaphoreHandle Engine::add_semaphore()
+{
+	vk::SemaphoreCreateInfo sci;
+	semaphores.push_back(vmc.logical_device.get().createSemaphore(sci));
+	return SemaphoreHandle{uint32_t(semaphores.size() - 1)};
+}
+
+void Engine::destroy(SemaphoreHandle handle)
+{
+	VKTE_ASSERT(handle.valid() && handle.index < semaphores.size(), "vkte: Invalid semaphore handle!");
+	vmc.logical_device.get().destroySemaphore(semaphores.at(handle.index));
+	semaphores.at(handle.index) = vk::Semaphore();
+}
+
+vk::Semaphore Engine::get(SemaphoreHandle handle) const
+{
+	VKTE_ASSERT(handle.valid() && handle.index < semaphores.size(), "vkte: Invalid semaphore handle!");
+	return semaphores.at(handle.index);
+}
+
+FenceHandle Engine::add_fence()
+{
+	// all fences are created as signaled, if an unsignaled fence is needed use reset_fence
+	vk::FenceCreateInfo fci;
+	fci.flags = vk::FenceCreateFlagBits::eSignaled;
+	fences.push_back(vmc.logical_device.get().createFence(fci));
+	return FenceHandle{uint32_t(fences.size() - 1)};
+}
+
+void Engine::destroy(FenceHandle handle)
+{
+	VKTE_ASSERT(handle.valid() && handle.index < fences.size(), "vkte: Invalid fence handle!");
+	vmc.logical_device.get().destroyFence(fences.at(handle.index));
+	fences.at(handle.index) = vk::Fence();
+}
+
+vk::Fence Engine::get(FenceHandle handle) const
+{
+	VKTE_ASSERT(handle.valid() && handle.index < fences.size(), "vkte: Invalid fence handle!");
+	return fences.at(handle.index);
+}
+
+void Engine::wait_for_fence(FenceHandle handle) const
+{
+	VKTE_CHECK(vmc.logical_device.get().waitForFences(get(handle), 1, uint64_t(-1)), "vkte: Failed to wait for fence!");
+}
+
+void Engine::reset_fence(FenceHandle handle) const
+{
+	vmc.logical_device.get().resetFences(get(handle));
+}
+
+bool Engine::is_fence_finished(FenceHandle handle) const
+{
+	return vmc.logical_device.get().getFenceStatus(get(handle)) == vk::Result::eSuccess;
+}
+
+DeviceTimerHandle Engine::add_device_timer(uint32_t timer_count)
+{
+	device_timers.push_back(std::unique_ptr<DeviceTimer>(new DeviceTimer(vmc, timer_count)));
+	return DeviceTimerHandle{uint32_t(device_timers.size() - 1)};
+}
+
+void Engine::destroy(DeviceTimerHandle handle)
+{
+	VKTE_ASSERT(handle.valid() && handle.index < device_timers.size() && device_timers.at(handle.index), "vkte: Invalid device timer handle!");
+	device_timers.at(handle.index).reset();
+}
+
+DeviceTimer& Engine::get(DeviceTimerHandle handle) const
+{
+	VKTE_ASSERT(handle.valid() && handle.index < device_timers.size() && device_timers.at(handle.index), "vkte: Invalid device timer handle!");
+	return *device_timers.at(handle.index);
+}
+
 const char* Engine::owner_name(uint32_t component) const
 {
 	if (component >= components.size()) return "engine";
@@ -237,7 +321,7 @@ bool Engine::reload_shaders_all()
 	return true;
 }
 
-void Engine::destruct_all()
+void Engine::destruct_components()
 {
 	for (Pipeline& pipeline : pipelines) pipeline.destruct();
 	pipelines.clear();

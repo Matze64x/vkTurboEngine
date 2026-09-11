@@ -24,6 +24,24 @@ struct PipelineHandle
 	bool valid() const { return index != ~0u; }
 };
 
+struct SemaphoreHandle
+{
+	uint32_t index = ~0u;
+	bool valid() const { return index != ~0u; }
+};
+
+struct FenceHandle
+{
+	uint32_t index = ~0u;
+	bool valid() const { return index != ~0u; }
+};
+
+struct DeviceTimerHandle
+{
+	uint32_t index = ~0u;
+	bool valid() const { return index != ~0u; }
+};
+
 struct ResourceHandle
 {
 	static constexpr uint32_t invalid_id = ~0u;
