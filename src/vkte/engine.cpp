@@ -22,12 +22,19 @@ Engine::Engine(const EngineSettings& settings) : vcc(vmc), storage(vmc, vcc), sh
 		swapchain.construct(vmc, vcc, storage, settings.vsync);
 		swapchain_constructed = true;
 	}
+	if (settings.create_ui)
+	{
+		VKTE_ASSERT(swapchain_constructed, "vkte: UI requires a swapchain; set EngineSettings::create_swapchain too.");
+		ui.construct(vmc, swapchain);
+		ui_constructed = true;
+	}
 #endif
 }
 
 Engine::~Engine()
 {
 #if ENABLE_VKTE_WINDOW
+	if (ui_constructed) ui.destruct(vmc);
 	if (swapchain_constructed) swapchain.destruct(vmc, storage);
 #endif
 	storage.clear();
@@ -324,6 +331,24 @@ DeviceTimer& Engine::get(DeviceTimerHandle handle) const
 {
 	VKTE_ASSERT(handle.valid() && handle.index < device_timers.size() && device_timers.at(handle.index), "vkte: Invalid device timer handle!");
 	return *device_timers.at(handle.index);
+}
+
+AccelerationStructureBuilderHandle Engine::add_acceleration_structure_builder()
+{
+	acceleration_structure_builders.push_back(std::unique_ptr<AccelerationStructureBuilder>(new AccelerationStructureBuilder(vmc, storage)));
+	return AccelerationStructureBuilderHandle{uint32_t(acceleration_structure_builders.size() - 1)};
+}
+
+void Engine::destroy(AccelerationStructureBuilderHandle handle)
+{
+	VKTE_ASSERT(handle.valid() && handle.index < acceleration_structure_builders.size() && acceleration_structure_builders.at(handle.index), "vkte: Invalid acceleration structure builder handle!");
+	acceleration_structure_builders.at(handle.index).reset();
+}
+
+AccelerationStructureBuilder& Engine::get(AccelerationStructureBuilderHandle handle) const
+{
+	VKTE_ASSERT(handle.valid() && handle.index < acceleration_structure_builders.size() && acceleration_structure_builders.at(handle.index), "vkte: Invalid acceleration structure builder handle!");
+	return *acceleration_structure_builders.at(handle.index);
 }
 
 const char* Engine::owner_name(uint32_t component) const

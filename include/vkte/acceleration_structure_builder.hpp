@@ -7,10 +7,11 @@
 
 namespace vkte
 {
+class Engine;
+
 class AccelerationStructureBuilder
 {
 public:
-	AccelerationStructureBuilder(const VulkanMainContext& vmc, Storage& storage);
 	void destruct();
 	void clean_up_scratch_buffers(bool keep_dynamic = true);
 	struct BLASData
@@ -61,6 +62,9 @@ private:
 	};
 
 	ScratchBuffer create_scratch_buffer(const std::string& buffer_name, vk::DeviceSize build_scratch_size);
+
+	friend class Engine;
+	AccelerationStructureBuilder(const VulkanMainContext& vmc, Storage& storage);
 
 	const VulkanMainContext& vmc;
 	Storage& storage;

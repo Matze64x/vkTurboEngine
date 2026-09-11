@@ -3,6 +3,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "vkte/acceleration_structure_builder.hpp"
 #include "vkte/component.hpp"
 #include "vkte/device_timer.hpp"
 #include "vkte/pipeline.hpp"
@@ -14,6 +15,9 @@
 #include "vkte/thread_manager.hpp"
 #include "vkte/vulkan_command_context.hpp"
 #include "vkte/vulkan_main_context.hpp"
+#if ENABLE_VKTE_WINDOW
+#include "vkte_window/ui.hpp"
+#endif
 
 namespace vkte
 {
@@ -27,6 +31,8 @@ struct EngineSettings
 	uint32_t window_height = 1080;
 	bool create_swapchain = false;
 	bool vsync = true;
+	// requires create_swapchain
+	bool create_ui = false;
 #endif
 };
 
@@ -87,9 +93,14 @@ public:
 	void destroy(DeviceTimerHandle handle);
 	DeviceTimer& get(DeviceTimerHandle handle) const;
 
+	AccelerationStructureBuilderHandle add_acceleration_structure_builder();
+	void destroy(AccelerationStructureBuilderHandle handle);
+	AccelerationStructureBuilder& get(AccelerationStructureBuilderHandle handle) const;
+
 #if ENABLE_VKTE_WINDOW
 	void resize(bool vsync);
 	Swapchain& get_swapchain() { return swapchain; }
+	UI& get_ui() { return ui; }
 #endif
 
 private:
@@ -108,9 +119,12 @@ private:
 	std::vector<vk::Semaphore> semaphores;
 	std::vector<vk::Fence> fences;
 	std::vector<std::unique_ptr<DeviceTimer>> device_timers;
+	std::vector<std::unique_ptr<AccelerationStructureBuilder>> acceleration_structure_builders;
 #if ENABLE_VKTE_WINDOW
 	Swapchain swapchain;
 	bool swapchain_constructed = false;
+	UI ui;
+	bool ui_constructed = false;
 #endif
 
 	void build_descriptor_set_layouts();

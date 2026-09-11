@@ -8,10 +8,7 @@
 
 namespace vkte
 {
-UI::UI(const vkte::VulkanMainContext& vmc) : vmc(vmc)
-{}
-
-void UI::construct(const vkte::Swapchain& swapchain)
+void UI::construct(const vkte::VulkanMainContext& vmc, const vkte::Swapchain& swapchain)
 {
 	std::vector<vk::DescriptorPoolSize> pool_sizes =
 	{
@@ -70,7 +67,7 @@ void UI::construct(const vkte::Swapchain& swapchain)
 	ImGui::StyleColorsDark();
 }
 
-void UI::destruct()
+void UI::destruct(const vkte::VulkanMainContext& vmc)
 {
 	ImGui_ImplVulkan_Shutdown();
 	ImGui_ImplSDL3_Shutdown();
