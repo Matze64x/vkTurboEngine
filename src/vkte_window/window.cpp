@@ -41,22 +41,33 @@ SDL_Window* Window::get() const
 	return window;
 }
 
-std::vector<const char*> Window::get_required_extensions() const
-{
-  uint32_t extension_count;
-  const char* const* extensions_sdl = SDL_Vulkan_GetInstanceExtensions(&extension_count);
-  std::vector<const char*> extensions;
-  for (int i = 0; i < extension_count; i++)
-  {
-    extensions.push_back(extensions_sdl[i]);
-  }
-  return extensions;
-}
-
 vk::SurfaceKHR Window::create_surface(const vk::Instance& instance)
 {
 	vk::SurfaceKHR surface;
 	VKTE_ASSERT(SDL_Vulkan_CreateSurface(window, instance, nullptr, reinterpret_cast<VkSurfaceKHR*>(&surface)), "Failed to create surface!");
 	return surface;
+}
+
+void Window::set_relative_mouse_mode(bool enabled)
+{
+	SDL_SetWindowRelativeMouseMode(window, enabled);
+}
+
+bool Window::get_relative_mouse_mode() const
+{
+	return SDL_GetWindowRelativeMouseMode(window);
+}
+
+void Window::warp_mouse(float x, float y)
+{
+	SDL_WarpMouseInWindow(window, x, y);
+}
+
+vk::Extent2D Window::get_pixel_size() const
+{
+	int32_t width = 0;
+	int32_t height = 0;
+	SDL_GetWindowSizeInPixels(window, &width, &height);
+	return vk::Extent2D(width > 0 ? static_cast<uint32_t>(width) : 0u, height > 0 ? static_cast<uint32_t>(height) : 0u);
 }
 } // namespace vkte

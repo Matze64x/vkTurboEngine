@@ -1,13 +1,25 @@
 #pragma once
 
 #include "vulkan/vulkan.hpp"
+#include "vkte/physical_device.hpp"
+#include "vkte/queue_families.hpp"
 #include "vkte/resource_handles.hpp"
 #include "vkte/storage.hpp"
-#include "vkte/vulkan_main_context.hpp"
 
 namespace vkte
 {
 class Engine;
+class Window;
+
+struct SwapchainSettings
+{
+	vk::SurfaceKHR surface;
+	vk::SurfaceCapabilitiesKHR capabilities;
+	vk::Extent2D extent;
+	vk::SurfaceFormatKHR surface_format;
+	vk::Format depth_format;
+	vk::PresentModeKHR present_mode;
+};
 
 class Swapchain
 {
@@ -24,8 +36,9 @@ public:
 
 private:
 	friend class Engine;
-	void construct(const VulkanMainContext& vmc, Command& command, Storage& storage, bool vsync);
-	void destruct(const VulkanMainContext& vmc, Storage& storage);
+	static SwapchainSettings choose_settings(const PhysicalDevice& physical_device, const Window& window, vk::SurfaceKHR surface, bool vsync);
+	void construct(const vk::Device& device, const QueueFamilies& queue_families, const SwapchainSettings& settings, Command& command, Storage& storage);
+	void destruct(const vk::Device& device, Storage& storage);
 
 	vk::Extent2D extent;
 	vk::SurfaceFormatKHR surface_format;
@@ -37,11 +50,7 @@ private:
 	std::vector<vk::Image> images;
 	std::vector<vk::ImageView> image_views;
 
-	vk::SwapchainKHR create_swapchain(const VulkanMainContext& vmc, bool vsync);
-	void create_images(const VulkanMainContext& vmc);
-	vk::PresentModeKHR choose_present_mode(const VulkanMainContext& vmc, bool vsync);
-	vk::Extent2D choose_extent(const VulkanMainContext& vmc);
-	vk::SurfaceFormatKHR choose_surface_format(const VulkanMainContext& vmc);
-	vk::Format choose_depth_format(const VulkanMainContext& vmc);
+	vk::SwapchainKHR create_swapchain(const vk::Device& device, const QueueFamilies& queue_families, const SwapchainSettings& settings);
+	void create_images(const vk::Device& device);
 };
 } // namespace vkte

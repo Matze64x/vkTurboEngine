@@ -2,12 +2,13 @@
 #include "imgui.h"
 #include "backends/imgui_impl_vulkan.h"
 #include "backends/imgui_impl_sdl3.h"
+#include "vkte/image.hpp"
 #include "vkte/swapchain.hpp"
 #include "vkte/vulkan_main_context.hpp"
 
 namespace vkte
 {
-void UI::construct(const vkte::VulkanMainContext& vmc, const vkte::Swapchain& swapchain)
+void UI::construct(const vkte::VulkanMainContext& vmc, const vkte::Swapchain& swapchain, SDL_Window* window)
 {
 	std::vector<vk::DescriptorPoolSize> pool_sizes =
 	{
@@ -43,7 +44,7 @@ void UI::construct(const vkte::VulkanMainContext& vmc, const vkte::Swapchain& sw
 	pipeline_rendering_info.stencilAttachmentFormat = has_stencil(swapchain.get_depth_format()) ? depth_fmt : VK_FORMAT_UNDEFINED;
 
 	ImGui::CreateContext();
-	ImGui_ImplSDL3_InitForVulkan(vmc.window.get());
+	ImGui_ImplSDL3_InitForVulkan(window);
 	ImGui_ImplVulkan_InitInfo init_info{};
 	init_info.ApiVersion = VK_API_VERSION_1_4;
 	init_info.Instance = vmc.instance.get();

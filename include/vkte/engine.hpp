@@ -16,6 +16,7 @@
 #include "vkte/command.hpp"
 #include "vkte/vulkan_main_context.hpp"
 #if ENABLE_VKTE_WINDOW
+#include "vkte_window/window.hpp"
 #include "vkte_window/ui.hpp"
 #endif
 
@@ -29,10 +30,7 @@ struct EngineSettings
 	std::string window_title = "vkte";
 	uint32_t window_width = 1920;
 	uint32_t window_height = 1080;
-	bool create_swapchain = false;
 	bool vsync = true;
-	// requires create_swapchain
-	bool create_ui = false;
 #endif
 };
 
@@ -70,7 +68,7 @@ public:
 	const vk::Device& get_device() const { return vmc.logical_device.get(); }
 	uint32_t get_queue_family_index(QueueFamilyFlags queue) const;
 #if ENABLE_VKTE_WINDOW
-	Window& get_window() { return vmc.window; }
+	Window& get_window() { return window; }
 #endif
 	Command& get_command() { return command; }
 	Storage& get_storage() { return storage; }
@@ -105,6 +103,9 @@ public:
 #endif
 
 private:
+#if ENABLE_VKTE_WINDOW
+	Window window;
+#endif
 	VulkanMainContext vmc;
 	Command command;
 	Storage storage;
@@ -123,9 +124,7 @@ private:
 	std::vector<std::unique_ptr<AccelerationStructureBuilder>> acceleration_structure_builders;
 #if ENABLE_VKTE_WINDOW
 	Swapchain swapchain;
-	bool swapchain_constructed = false;
 	UI ui;
-	bool ui_constructed = false;
 #endif
 
 	void build_descriptor_set_layouts();

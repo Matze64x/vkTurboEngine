@@ -10,32 +10,25 @@ namespace vkte
 Engine::Engine(const EngineSettings& settings) : command(vmc), storage(vmc, command), shader_repository(thread_manager)
 {
 #if ENABLE_VKTE_WINDOW
-	vmc.construct(settings.window_title, settings.window_width, settings.window_height, settings.features);
+	window.construct(settings.window_title, settings.window_width, settings.window_height);
+	vmc.construct(window, settings.features);
 #else
 	vmc.construct(settings.features);
 #endif
 	command.construct();
 	shader_repository.construct(vmc.logical_device.get(), settings.shader_root_dir);
 #if ENABLE_VKTE_WINDOW
-	if (settings.create_swapchain)
-	{
-		swapchain.construct(vmc, command, storage, settings.vsync);
-		swapchain_constructed = true;
-	}
-	if (settings.create_ui)
-	{
-		VKTE_ASSERT(swapchain_constructed, "vkte: UI requires a swapchain; set EngineSettings::create_swapchain too.");
-		ui.construct(vmc, swapchain);
-		ui_constructed = true;
-	}
+	SwapchainSettings swapchain_settings = Swapchain::choose_settings(vmc.physical_device, window, vmc.surface, settings.vsync);
+	swapchain.construct(vmc.logical_device.get(), vmc.queue_families, swapchain_settings, command, storage);
+	ui.construct(vmc, swapchain, window.get());
 #endif
 }
 
 Engine::~Engine()
 {
 #if ENABLE_VKTE_WINDOW
-	if (ui_constructed) ui.destruct(vmc);
-	if (swapchain_constructed) swapchain.destruct(vmc, storage);
+	ui.destruct(vmc);
+	swapchain.destruct(vmc.logical_device.get(), storage);
 #endif
 	storage.clear();
 	for (const vk::Semaphore& semaphore : semaphores)
@@ -50,6 +43,9 @@ Engine::~Engine()
 	shader_repository.destruct();
 	command.destruct();
 	vmc.destruct();
+#if ENABLE_VKTE_WINDOW
+	window.destruct();
+#endif
 }
 
 void Engine::register_component(Component& component)
@@ -252,9 +248,9 @@ uint32_t Engine::get_queue_family_index(QueueFamilyFlags queue) const
 #if ENABLE_VKTE_WINDOW
 void Engine::resize(bool vsync)
 {
-	VKTE_ASSERT(swapchain_constructed, "vkte: Trying to resize a swapchain that was never constructed! Set EngineSettings::create_swapchain.");
-	swapchain.destruct(vmc, storage);
-	swapchain.construct(vmc, command, storage, vsync);
+	swapchain.destruct(vmc.logical_device.get(), storage);
+	SwapchainSettings swapchain_settings = Swapchain::choose_settings(vmc.physical_device, window, vmc.surface, vsync);
+	swapchain.construct(vmc.logical_device.get(), vmc.queue_families, swapchain_settings, command, storage);
 }
 
 vk::ResultValue<uint32_t> Engine::acquire_next_image(vk::Semaphore semaphore) const

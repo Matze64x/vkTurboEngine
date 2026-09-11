@@ -4,13 +4,14 @@
 #include "vkte/queue_families.hpp"
 #include "vkte/logical_device.hpp"
 #include "vkte/physical_device.hpp"
-#if ENABLE_VKTE_WINDOW
-#include "vkte_window/window.hpp"
-#endif
 #include "vk_mem_alloc.h"
 
 namespace vkte
 {
+#if ENABLE_VKTE_WINDOW
+class Window;
+#endif
+
 struct Features
 {
 	bool khronos_validation = false;
@@ -23,16 +24,11 @@ class VulkanMainContext
 public:
 	VulkanMainContext() = default;
 #if ENABLE_VKTE_WINDOW
-	void construct(const std::string& title, const uint32_t width, const uint32_t height, const Features& features);
+	void construct(Window& window, const Features& features);
 #else
 	void construct(const Features& features);
 #endif
 	void destruct();
-#if ENABLE_VKTE_WINDOW
-	std::vector<vk::SurfaceFormatKHR> get_surface_formats() const;
-	std::vector<vk::PresentModeKHR> get_surface_present_modes() const;
-	vk::SurfaceCapabilitiesKHR get_surface_capabilities() const;
-#endif
 	const vk::Queue& get_graphics_queue() const;
 	const vk::Queue& get_transfer_queue() const;
 	const vk::Queue& get_compute_queue() const;
@@ -48,9 +44,6 @@ private:
 
 public:
 	vk::detail::DynamicLoader dl;
-#if ENABLE_VKTE_WINDOW
-	Window window;
-#endif
 	Instance instance;
 	vk::DebugUtilsMessengerEXT debug_messenger;
 	vk::SurfaceKHR surface;

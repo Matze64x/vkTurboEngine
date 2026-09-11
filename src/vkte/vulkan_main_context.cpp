@@ -1,6 +1,10 @@
 #include "vkte/vulkan_main_context.hpp"
 
 #include "vkte/vkte_log.hpp"
+#if ENABLE_VKTE_WINDOW
+#include "vkte_window/window.hpp"
+#include <SDL3/SDL_vulkan.h>
+#endif
 #define VMA_STATIC_VULKAN_FUNCTIONS 0
 #define VMA_DYNAMIC_VULKAN_FUNCTIONS 1
 #define VMA_IMPLEMENTATION
@@ -31,14 +35,15 @@ static VKAPI_ATTR vk::Bool32 VKAPI_CALL debug_callback(vk::DebugUtilsMessageSeve
 namespace vkte
 {
 #if ENABLE_VKTE_WINDOW
-void VulkanMainContext::construct(const std::string& title, const uint32_t width, const uint32_t height, const Features& features)
+void VulkanMainContext::construct(Window& window, const Features& features)
 {
 	this->features = features;
 	PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr = dl.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
 	VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
-	window.construct(title, width, height);
 	window.hide();
-	std::vector<const char*> instance_extensions = window.get_required_extensions();
+	uint32_t extension_count;
+	const char* const* extensions_sdl = SDL_Vulkan_GetInstanceExtensions(&extension_count);
+	std::vector<const char*> instance_extensions(extensions_sdl, extensions_sdl + extension_count);
 	std::vector<const char*> validation_layers;
 	if (features.khronos_validation) validation_layers.push_back("VK_LAYER_KHRONOS_validation");
 	instance.construct(instance_extensions, validation_layers);
@@ -100,27 +105,7 @@ void VulkanMainContext::destruct()
 	logical_device.destruct();
 	instance.get().destroyDebugUtilsMessengerEXT(debug_messenger, nullptr, VULKAN_HPP_DEFAULT_DISPATCHER);
 	instance.destruct();
-#if ENABLE_VKTE_WINDOW
-	window.destruct();
-#endif
 }
-
-#if ENABLE_VKTE_WINDOW
-std::vector<vk::SurfaceFormatKHR> VulkanMainContext::get_surface_formats() const
-{
-	return physical_device.get().getSurfaceFormatsKHR(surface);
-}
-
-std::vector<vk::PresentModeKHR> VulkanMainContext::get_surface_present_modes() const
-{
-	return physical_device.get().getSurfacePresentModesKHR(surface);
-}
-
-vk::SurfaceCapabilitiesKHR VulkanMainContext::get_surface_capabilities() const
-{
-	return physical_device.get().getSurfaceCapabilitiesKHR(surface);
-}
-#endif
 
 const vk::Queue& VulkanMainContext::get_graphics_queue() const
 {

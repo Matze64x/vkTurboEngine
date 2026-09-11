@@ -2,6 +2,7 @@
 
 #include <string>
 #include "vulkan/vulkan.hpp"
+#include "SDL3/SDL_video.h"
 
 namespace vkte
 {
@@ -17,7 +18,7 @@ public:
 
 private:
 	friend class Engine;
-	void construct(const vkte::VulkanMainContext& vmc, const vkte::Swapchain& swapchain);
+	void construct(const vkte::VulkanMainContext& vmc, const vkte::Swapchain& swapchain, SDL_Window* window);
 	void destruct(const vkte::VulkanMainContext& vmc);
 
 	vk::DescriptorPool imgui_pool;
