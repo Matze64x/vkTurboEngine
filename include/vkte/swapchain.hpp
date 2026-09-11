@@ -24,7 +24,7 @@ public:
 
 private:
 	friend class Engine;
-	void construct(const VulkanMainContext& vmc, VulkanCommandContext& vcc, Storage& storage, bool vsync);
+	void construct(const VulkanMainContext& vmc, Command& command, Storage& storage, bool vsync);
 	void destruct(const VulkanMainContext& vmc, Storage& storage);
 
 	vk::Extent2D extent;

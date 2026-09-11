@@ -3,7 +3,6 @@
 #include "backends/imgui_impl_vulkan.h"
 #include "backends/imgui_impl_sdl3.h"
 #include "vkte/swapchain.hpp"
-#include "vkte/vulkan_command_context.hpp"
 #include "vkte/vulkan_main_context.hpp"
 
 namespace vkte

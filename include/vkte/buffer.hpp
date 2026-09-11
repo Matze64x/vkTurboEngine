@@ -5,7 +5,7 @@
 
 #include "vkte/queue_families.hpp"
 #include "vkte/vkte_log.hpp"
-#include "vkte/vulkan_command_context.hpp"
+#include "vkte/command.hpp"
 #include "vkte/vulkan_main_context.hpp"
 
 namespace vkte
@@ -14,17 +14,17 @@ class Buffer
 {
 public:
 	template<class T>
-	Buffer(const VulkanMainContext& vmc, VulkanCommandContext& vcc, const T* data, std::size_t elements, vk::BufferUsageFlags usage_flags, bool device_local, Queues queues) : Buffer(vmc, vcc, sizeof(T) * elements, usage_flags, device_local, queues)
+	Buffer(const VulkanMainContext& vmc, Command& command, const T* data, std::size_t elements, vk::BufferUsageFlags usage_flags, bool device_local, Queues queues) : Buffer(vmc, command, sizeof(T) * elements, usage_flags, device_local, queues)
 	{
 		element_count = elements;
 		update_data(data, elements);
 	}
 
 	template<class T>
-	Buffer(const VulkanMainContext& vmc, VulkanCommandContext& vcc, const std::vector<T>& data, vk::BufferUsageFlags usage_flags, bool device_local, Queues queues) : Buffer(vmc, vcc, data.data(), data.size(), usage_flags, device_local, queues)
+	Buffer(const VulkanMainContext& vmc, Command& command, const std::vector<T>& data, vk::BufferUsageFlags usage_flags, bool device_local, Queues queues) : Buffer(vmc, command, data.data(), data.size(), usage_flags, device_local, queues)
 	{}
 
-	Buffer(const VulkanMainContext& vmc, VulkanCommandContext& vcc, std::size_t byte_size, vk::BufferUsageFlags usage_flags, bool device_local, Queues queues) : vmc(vmc), vcc(vcc), device_local(device_local), byte_size(byte_size)
+	Buffer(const VulkanMainContext& vmc, Command& command, std::size_t byte_size, vk::BufferUsageFlags usage_flags, bool device_local, Queues queues) : vmc(vmc), command(command), device_local(device_local), byte_size(byte_size)
 	{
 		if (device_local)
 		{
@@ -68,14 +68,14 @@ public:
 			memset(mapped_mem, constant, byte_count);
 			vmaUnmapMemory(vmc.va, staging_vmaa);
 
-			vk::CommandBuffer& cb = vcc.get_one_time_transfer_buffer();
+			vk::CommandBuffer& cb = command.get_one_time_transfer_buffer();
 
 			vk::BufferCopy copy_region;
 			copy_region.srcOffset = 0;
 			copy_region.dstOffset = 0;
 			copy_region.size = byte_count;
 			cb.copyBuffer(staging_buffer, buffer, copy_region);
-			vcc.submit_transfer(cb, true);
+			command.submit_transfer(cb, true);
 
 			vmaDestroyBuffer(vmc.va, staging_buffer, staging_vmaa);
 		}
@@ -101,14 +101,14 @@ public:
 			memcpy(mapped_mem, data, byte_count);
 			vmaUnmapMemory(vmc.va, staging_vmaa);
 
-			vk::CommandBuffer& cb = vcc.get_one_time_transfer_buffer();
+			vk::CommandBuffer& cb = command.get_one_time_transfer_buffer();
 
 			vk::BufferCopy copy_region;
 			copy_region.srcOffset = 0;
 			copy_region.dstOffset = offset;
 			copy_region.size = byte_count;
 			cb.copyBuffer(staging_buffer, buffer, copy_region);
-			vcc.submit_transfer(cb, true);
+			command.submit_transfer(cb, true);
 
 			vmaDestroyBuffer(vmc.va, staging_buffer, staging_vmaa);
 		}
@@ -147,13 +147,13 @@ public:
 		{
 			auto [staging_buffer, staging_vmaa] = create_buffer((vk::BufferUsageFlagBits::eTransferDst), VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT, byte_count, false, QueueFamilyFlags::Transfer);
 
-			vk::CommandBuffer& cb = vcc.get_one_time_transfer_buffer();
+			vk::CommandBuffer& cb = command.get_one_time_transfer_buffer();
 			vk::BufferCopy copy_region;
 			copy_region.srcOffset = 0;
 			copy_region.dstOffset = 0;
 			copy_region.size = byte_count;
 			cb.copyBuffer(buffer, staging_buffer, copy_region);
-			vcc.submit_transfer(cb, true);
+			command.submit_transfer(cb, true);
 
 			void* mapped_mem;
 			vmaMapMemory(vmc.va, staging_vmaa, &mapped_mem);
@@ -240,7 +240,7 @@ private:
 	}
 
 	const VulkanMainContext& vmc;
-	VulkanCommandContext& vcc;
+	Command& command;
 	bool device_local;
 	uint64_t byte_size;
 	uint64_t element_count;

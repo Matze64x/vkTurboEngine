@@ -13,7 +13,7 @@
 #include "vkte/storage.hpp"
 #include "vkte/swapchain.hpp"
 #include "vkte/thread_manager.hpp"
-#include "vkte/vulkan_command_context.hpp"
+#include "vkte/command.hpp"
 #include "vkte/vulkan_main_context.hpp"
 #if ENABLE_VKTE_WINDOW
 #include "vkte_window/ui.hpp"
@@ -73,7 +73,7 @@ public:
 	Window& get_window() { return vmc.window; }
 #endif
 	VulkanMainContext& get_vmc() { return vmc; }
-	VulkanCommandContext& get_vcc() { return vcc; }
+	Command& get_command() { return command; }
 	Storage& get_storage() { return storage; }
 	ThreadManager& get_thread_manager() { return thread_manager; }
 
@@ -105,7 +105,7 @@ public:
 
 private:
 	VulkanMainContext vmc;
-	VulkanCommandContext vcc;
+	Command command;
 	Storage storage;
 	ThreadManager thread_manager;
 	ShaderRepository shader_repository;

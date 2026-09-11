@@ -48,6 +48,12 @@ struct AccelerationStructureBuilderHandle
 	bool valid() const { return index != ~0u; }
 };
 
+struct CommandBufferHandle
+{
+	uint32_t index = ~0u;
+	bool valid() const { return index != ~0u; }
+};
+
 struct ResourceHandle
 {
 	static constexpr uint32_t invalid_id = ~0u;

@@ -79,22 +79,22 @@ void perform_image_layout_transition(vk::CommandBuffer& cb, const std::vector<Im
 	cb.pipelineBarrier2(dep);
 }
 
-Image::Image(const VulkanMainContext& vmc, VulkanCommandContext& vcc, const unsigned char* data, uint32_t width, uint32_t height, bool use_mip_maps, uint32_t base_mip_map_lvl, Queues queues, vk::ImageUsageFlags usage_flags) : vmc(vmc), w(width), h(height), c(4), byte_size(width * height * 4), mip_levels(use_mip_maps ? std::floor(std::log2(std::max(w, h))) + 1 : 1), layer_count(1)
+Image::Image(const VulkanMainContext& vmc, Command& command, const unsigned char* data, uint32_t width, uint32_t height, bool use_mip_maps, uint32_t base_mip_map_lvl, Queues queues, vk::ImageUsageFlags usage_flags) : vmc(vmc), w(width), h(height), c(4), byte_size(width * height * 4), mip_levels(use_mip_maps ? std::floor(std::log2(std::max(w, h))) + 1 : 1), layer_count(1)
 {
-	create_image_from_data(data, vcc, queues, base_mip_map_lvl, usage_flags);
+	create_image_from_data(data, command, queues, base_mip_map_lvl, usage_flags);
 }
 
-Image::Image(const VulkanMainContext& vmc, VulkanCommandContext& vcc, const std::vector<std::vector<unsigned char>>& data, uint32_t width, uint32_t height, bool use_mip_maps, uint32_t base_mip_map_lvl, Queues queues, vk::ImageUsageFlags usage_flags, vk::ImageViewType image_view_type) : vmc(vmc), w(width), h(height), c(4), byte_size(width * height * 4 * data.size()), mip_levels(use_mip_maps ? std::floor(std::log2(std::max(w, h))) + 1 : 1), layer_count(data.size())
+Image::Image(const VulkanMainContext& vmc, Command& command, const std::vector<std::vector<unsigned char>>& data, uint32_t width, uint32_t height, bool use_mip_maps, uint32_t base_mip_map_lvl, Queues queues, vk::ImageUsageFlags usage_flags, vk::ImageViewType image_view_type) : vmc(vmc), w(width), h(height), c(4), byte_size(width * height * 4 * data.size()), mip_levels(use_mip_maps ? std::floor(std::log2(std::max(w, h))) + 1 : 1), layer_count(data.size())
 {
 	std::vector<unsigned char> copy_data;
 	for (const auto& i : data)
 	{
 		for (const auto& j : i) copy_data.push_back(j);
 	}
-	create_image_from_data(copy_data.data(), vcc, queues, base_mip_map_lvl, usage_flags, image_view_type);
+	create_image_from_data(copy_data.data(), command, queues, base_mip_map_lvl, usage_flags, image_view_type);
 }
 
-Image::Image(const VulkanMainContext& vmc, const VulkanCommandContext& vcc, uint32_t width, uint32_t height, vk::ImageUsageFlags usage, vk::Format format, vk::SampleCountFlagBits sample_count, bool use_mip_maps, uint32_t base_mip_map_lvl, Queues queues, bool image_view_required, uint32_t layer_count) : vmc(vmc), format(format), w(width), h(height), c(4), mip_levels(use_mip_maps ? std::floor(std::log2(std::max(w, h))) + 1 : 1), layer_count(layer_count)
+Image::Image(const VulkanMainContext& vmc, const Command& command, uint32_t width, uint32_t height, vk::ImageUsageFlags usage, vk::Format format, vk::SampleCountFlagBits sample_count, bool use_mip_maps, uint32_t base_mip_map_lvl, Queues queues, bool image_view_required, uint32_t layer_count) : vmc(vmc), format(format), w(width), h(height), c(4), mip_levels(use_mip_maps ? std::floor(std::log2(std::max(w, h))) + 1 : 1), layer_count(layer_count)
 {
 	std::tie(image, vmaa) = create_image(queues, usage, sample_count, use_mip_maps, format, vk::Extent3D(w, h, 1), layer_count, vmc.va, !image_view_required);
 	layout = vk::ImageLayout::eUndefined;
@@ -170,9 +170,9 @@ std::pair<vk::Image, VmaAllocation> Image::create_image(Queues queues, vk::Image
 	return image;
 }
 
-void copy_buffer_to_image(VulkanCommandContext& vcc, const Buffer& buffer, vk::Extent3D extent, vk::Image image, uint32_t layer_count, uint32_t pixel_byte_size)
+void copy_buffer_to_image(Command& command, const Buffer& buffer, vk::Extent3D extent, vk::Image image, uint32_t layer_count, uint32_t pixel_byte_size)
 {
-	vk::CommandBuffer& cb = vcc.get_one_time_transfer_buffer();
+	vk::CommandBuffer& cb = command.get_one_time_transfer_buffer();
 	std::vector<vk::BufferImageCopy> copy_regions;
 	for (uint32_t i = 0; i < layer_count; ++i)
 	{
@@ -190,12 +190,12 @@ void copy_buffer_to_image(VulkanCommandContext& vcc, const Buffer& buffer, vk::E
 	}
 
 	cb.copyBufferToImage(buffer.get(), image, vk::ImageLayout::eTransferDstOptimal, copy_regions);
-	vcc.submit_transfer(cb, true);
+	command.submit_transfer(cb, true);
 }
 
-void Image::create_image_from_data(const unsigned char* data, VulkanCommandContext& vcc, Queues queues, uint32_t base_mip_map_lvl, vk::ImageUsageFlags usage_flags, vk::ImageViewType image_view_type)
+void Image::create_image_from_data(const unsigned char* data, Command& command, Queues queues, uint32_t base_mip_map_lvl, vk::ImageUsageFlags usage_flags, vk::ImageViewType image_view_type)
 {
-	Buffer buffer(vmc, vcc, data, byte_size, vk::BufferUsageFlagBits::eTransferSrc, false, QueueFamilyFlags::Transfer);
+	Buffer buffer(vmc, command, data, byte_size, vk::BufferUsageFlagBits::eTransferSrc, false, QueueFamilyFlags::Transfer);
 
 	vk::FormatProperties format_properties = vmc.physical_device.get().getFormatProperties(format);
 	if (!(format_properties.optimalTilingFeatures & vk::FormatFeatureFlagBits::eSampledImageFilterLinear))
@@ -206,7 +206,7 @@ void Image::create_image_from_data(const unsigned char* data, VulkanCommandConte
 
 	auto move_buffer_to_image = [&](vk::Image image, uint32_t mip_levels) -> void {
 		// copy image data to tmp_image
-		vk::CommandBuffer& cb = vcc.get_one_time_transfer_buffer();
+		vk::CommandBuffer& cb = command.get_one_time_transfer_buffer();
 		perform_image_layout_transition(cb, {
 			.image = image,
 			.range = {
@@ -223,8 +223,8 @@ void Image::create_image_from_data(const unsigned char* data, VulkanCommandConte
 			.dst_stage = vk::PipelineStageFlagBits2::eTransfer,
 			.dst_access = vk::AccessFlagBits2::eTransferWrite
 		});
-		vcc.submit_transfer(cb, true);
-		copy_buffer_to_image(vcc, buffer, vk::Extent3D(w, h, 1), image, layer_count, c);
+		command.submit_transfer(cb, true);
+		copy_buffer_to_image(command, buffer, vk::Extent3D(w, h, 1), image, layer_count, c);
 	};
 
 	// check if image should start at base_mip_map_lvl to save some storage
@@ -241,7 +241,7 @@ void Image::create_image_from_data(const unsigned char* data, VulkanCommandConte
 		byte_size = w * h * 4;
 
 		// create image with reduced resolution by blitting
-		vk::CommandBuffer& cb = vcc.get_one_time_graphics_buffer();
+		vk::CommandBuffer& cb = command.get_one_time_graphics_buffer();
 		perform_image_layout_transition(cb, {
 			.image = tmp_image,
 			.range = {
@@ -276,7 +276,7 @@ void Image::create_image_from_data(const unsigned char* data, VulkanCommandConte
 			.dst_access = vk::AccessFlagBits2::eTransferWrite
 		});
 		blit_image(cb, tmp_image, 0, tmp_image_offset, image, 0, {w, h, 1}, layer_count);
-		vcc.submit_graphics(cb, true);
+		command.submit_graphics(cb, true);
 
 		vmaDestroyImage(vmc.va, VkImage(tmp_image), tmp_alloc);
 	}
@@ -291,7 +291,7 @@ void Image::create_image_from_data(const unsigned char* data, VulkanCommandConte
 	layout = vk::ImageLayout::eTransferDstOptimal;
 	if (usage_flags & vk::ImageUsageFlagBits::eSampled)
 	{
-		mip_levels > 1 ? generate_mipmaps(vcc) : transition_image_layout(vcc, vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits2::eTransfer, vk::PipelineStageFlagBits2::eFragmentShader, vk::AccessFlagBits2::eTransferWrite, vk::AccessFlagBits2::eShaderRead);
+		mip_levels > 1 ? generate_mipmaps(command) : transition_image_layout(command, vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits2::eTransfer, vk::PipelineStageFlagBits2::eFragmentShader, vk::AccessFlagBits2::eTransferWrite, vk::AccessFlagBits2::eShaderRead);
 	}
 	create_image_view(vk::ImageAspectFlagBits::eColor, image_view_type);
 	create_sampler();
@@ -347,10 +347,10 @@ void Image::destruct()
 	vmaDestroyImage(vmc.va, VkImage(image), vmaa);
 }
 
-void Image::transition_image_layout(VulkanCommandContext& vcc, vk::ImageLayout new_layout, vk::PipelineStageFlags2 src_stage_flags, vk::PipelineStageFlags2 dst_stage_flags, vk::AccessFlags2 src_access_flags, vk::AccessFlags2 dst_access_flags)
+void Image::transition_image_layout(Command& command, vk::ImageLayout new_layout, vk::PipelineStageFlags2 src_stage_flags, vk::PipelineStageFlags2 dst_stage_flags, vk::AccessFlags2 src_access_flags, vk::AccessFlags2 dst_access_flags)
 {
 	// transition the image layout of this image
-	vk::CommandBuffer& cb = vcc.get_one_time_graphics_buffer();
+	vk::CommandBuffer& cb = command.get_one_time_graphics_buffer();
 	perform_image_layout_transition(cb, {
 		.image = image,
 		.range = {
@@ -367,7 +367,7 @@ void Image::transition_image_layout(VulkanCommandContext& vcc, vk::ImageLayout n
 		.dst_stage = dst_stage_flags,
 		.dst_access = dst_access_flags
 	});
-	vcc.submit_graphics(cb, true);
+	command.submit_graphics(cb, true);
 	layout = new_layout;
 }
 
@@ -413,9 +413,9 @@ vk::Sampler Image::get_sampler() const
 	return sampler;
 }
 
-void Image::generate_mipmaps(VulkanCommandContext& vcc)
+void Image::generate_mipmaps(Command& command)
 {
-	vk::CommandBuffer& cb = vcc.get_one_time_graphics_buffer();
+	vk::CommandBuffer& cb = command.get_one_time_graphics_buffer();
 	vk::ImageMemoryBarrier imb;
 	imb.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	imb.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -456,6 +456,6 @@ void Image::generate_mipmaps(VulkanCommandContext& vcc)
 	imb.dstAccessMask = vk::AccessFlagBits::eShaderRead;
 	cb.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eFragmentShader, {}, nullptr, nullptr, imb);
 
-	vcc.submit_graphics(cb, true);
+	command.submit_graphics(cb, true);
 }
 } // namespace vkte

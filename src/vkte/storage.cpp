@@ -4,7 +4,7 @@
 
 namespace vkte
 {
-Storage::Storage(const VulkanMainContext& vmc, VulkanCommandContext& vcc) : vmc(vmc), vcc(vcc)
+Storage::Storage(const VulkanMainContext& vmc, Command& command) : vmc(vmc), command(command)
 {}
 
 std::string Storage::get_memory_info()

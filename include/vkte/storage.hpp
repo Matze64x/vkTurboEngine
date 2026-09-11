@@ -14,7 +14,7 @@ namespace vkte
 class Storage
 {
 public:
-	Storage(const VulkanMainContext& vmc, VulkanCommandContext& vcc);
+	Storage(const VulkanMainContext& vmc, Command& command);
 	std::string get_memory_info();
 
 	template<typename... Args>
@@ -31,12 +31,12 @@ public:
 			{
 				// buffer name exists but the corresponding buffer got deleted; so, reuse the name
 				buffers.at(buffer_names.at(name))->name = name;
-				buffers.at(buffer_names.at(name))->buffer.emplace(vmc, vcc, std::forward<Args>(args)...);
+				buffers.at(buffer_names.at(name))->buffer.emplace(vmc, command, std::forward<Args>(args)...);
 			}
 		}
 		else
 		{
-			buffers.push_back(std::make_unique<BufferElement>(name, std::make_optional<Buffer>(vmc, vcc, std::forward<Args>(args)...)));
+			buffers.push_back(std::make_unique<BufferElement>(name, std::make_optional<Buffer>(vmc, command, std::forward<Args>(args)...)));
 			buffer_names.emplace(name, uint32_t(buffers.size() - 1));
 		}
 		const vk::Buffer& b = buffers.at(buffer_names.at(name))->buffer.value().get();
@@ -61,12 +61,12 @@ public:
 			{
 				// image name exists but the corresponding image got deleted; so, reuse the name
 				images.at(image_names.at(name))->name = name;
-				images.at(image_names.at(name))->image.emplace(vmc, vcc, std::forward<Args>(args)...);
+				images.at(image_names.at(name))->image.emplace(vmc, command, std::forward<Args>(args)...);
 			}
 		}
 		else
 		{
-			images.push_back(std::make_unique<ImageElement>(name, std::make_optional<Image>(vmc, vcc, std::forward<Args>(args)...)));
+			images.push_back(std::make_unique<ImageElement>(name, std::make_optional<Image>(vmc, command, std::forward<Args>(args)...)));
 			image_names.emplace(name, uint32_t(images.size() - 1));
 		}
 		const vk::Image& i = images.at(image_names.at(name))->image.value().get_image();
@@ -89,7 +89,7 @@ public:
 
 private:
 	const VulkanMainContext& vmc;
-	VulkanCommandContext& vcc;
+	Command& command;
 
 	struct BufferElement
 	{

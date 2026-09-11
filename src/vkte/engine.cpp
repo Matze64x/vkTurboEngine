@@ -7,19 +7,19 @@
 
 namespace vkte
 {
-Engine::Engine(const EngineSettings& settings) : vcc(vmc), storage(vmc, vcc), shader_repository(thread_manager)
+Engine::Engine(const EngineSettings& settings) : command(vmc), storage(vmc, command), shader_repository(thread_manager)
 {
 #if ENABLE_VKTE_WINDOW
 	vmc.construct(settings.window_title, settings.window_width, settings.window_height, settings.features);
 #else
 	vmc.construct(settings.features);
 #endif
-	vcc.construct();
+	command.construct();
 	shader_repository.construct(vmc.logical_device.get(), settings.shader_root_dir);
 #if ENABLE_VKTE_WINDOW
 	if (settings.create_swapchain)
 	{
-		swapchain.construct(vmc, vcc, storage, settings.vsync);
+		swapchain.construct(vmc, command, storage, settings.vsync);
 		swapchain_constructed = true;
 	}
 	if (settings.create_ui)
@@ -48,7 +48,7 @@ Engine::~Engine()
 	}
 	device_timers.clear();
 	shader_repository.destruct();
-	vcc.destruct();
+	command.destruct();
 	vmc.destruct();
 }
 
@@ -254,7 +254,7 @@ void Engine::resize(bool vsync)
 {
 	VKTE_ASSERT(swapchain_constructed, "vkte: Trying to resize a swapchain that was never constructed! Set EngineSettings::create_swapchain.");
 	swapchain.destruct(vmc, storage);
-	swapchain.construct(vmc, vcc, storage, vsync);
+	swapchain.construct(vmc, command, storage, vsync);
 }
 #endif
 

@@ -50,7 +50,7 @@ uint32_t Swapchain::get_image_count() const
 	return images.size();
 }
 
-void Swapchain::construct(const VulkanMainContext& vmc, VulkanCommandContext& vcc, Storage& storage, bool vsync)
+void Swapchain::construct(const VulkanMainContext& vmc, Command& command, Storage& storage, bool vsync)
 {
 	extent = choose_extent(vmc);
 	surface_format = choose_surface_format(vmc);
@@ -58,7 +58,7 @@ void Swapchain::construct(const VulkanMainContext& vmc, VulkanCommandContext& vc
 	swapchain = create_swapchain(vmc, vsync);
 	depth_buffer = storage.add_image("depth_buffer", extent.width, extent.height, vk::ImageUsageFlagBits::eDepthStencilAttachment, depth_format, vk::SampleCountFlagBits::e1, false, 0, QueueFamilyFlags::Graphics);
 	Image& depth_buffer_image = storage.get_image(depth_buffer);
-	depth_buffer_image.transition_image_layout(vcc, vk::ImageLayout::eDepthStencilAttachmentOptimal, vk::PipelineStageFlagBits2::eTopOfPipe, vk::PipelineStageFlagBits2::eEarlyFragmentTests | vk::PipelineStageFlagBits2::eLateFragmentTests, vk::AccessFlagBits2::eNone, vk::AccessFlagBits2::eDepthStencilAttachmentRead | vk::AccessFlagBits2::eDepthStencilAttachmentWrite);
+	depth_buffer_image.transition_image_layout(command, vk::ImageLayout::eDepthStencilAttachmentOptimal, vk::PipelineStageFlagBits2::eTopOfPipe, vk::PipelineStageFlagBits2::eEarlyFragmentTests | vk::PipelineStageFlagBits2::eLateFragmentTests, vk::AccessFlagBits2::eNone, vk::AccessFlagBits2::eDepthStencilAttachmentRead | vk::AccessFlagBits2::eDepthStencilAttachmentWrite);
 	depth_image = depth_buffer_image.get_image();
 	depth_view = depth_buffer_image.get_view();
 	create_images(vmc);
