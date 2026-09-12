@@ -59,6 +59,7 @@ public:
 	const std::vector<vk::DescriptorSet>& get_descriptor_sets(DescriptorSetsHandle handle) const;
 	void wait_idle() const;
 	const vk::Device& get_device() const { return vmc.logical_device.get(); }
+	vk::PhysicalDeviceProperties get_physical_device_properties() const { return vmc.physical_device.get().getProperties(); }
 	uint32_t get_queue_family_index(QueueFamilyFlags queue) const;
 	Window& get_window();
 	Command& get_command() { return command; }

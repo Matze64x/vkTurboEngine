@@ -88,5 +88,3 @@ set_source_files_properties(
 	"${PROJECT_SOURCE_DIR}/dependencies/imgui/backends/imgui_impl_vulkan.cpp"
 	PROPERTIES SKIP_PRECOMPILE_HEADERS ON
 )
-
-add_library(vkte::vkte ALIAS vkte)
