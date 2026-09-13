@@ -14,8 +14,8 @@ public:
 	~DeviceTimer();
 	void reset(vk::CommandBuffer& cb, uint32_t timer_index);
 	void reset_all(vk::CommandBuffer& cb);
-	void start(vk::CommandBuffer& cb, uint32_t timer_index, vk::PipelineStageFlagBits stage);
-	void stop(vk::CommandBuffer& cb, uint32_t timer_index, vk::PipelineStageFlagBits stage);
+	void start(vk::CommandBuffer& cb, uint32_t timer_index, vk::PipelineStageFlags2 stage);
+	void stop(vk::CommandBuffer& cb, uint32_t timer_index, vk::PipelineStageFlags2 stage);
 
 	template<class Precision = std::milli>
 	double inline get_result(uint32_t i)

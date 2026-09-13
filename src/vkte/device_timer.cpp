@@ -28,14 +28,14 @@ void DeviceTimer::reset_all(vk::CommandBuffer& cb)
 	cb.resetQueryPool(qp, 0, result_fetched.size());
 }
 
-void DeviceTimer::start(vk::CommandBuffer& cb, uint32_t timer_index, vk::PipelineStageFlagBits stage)
+void DeviceTimer::start(vk::CommandBuffer& cb, uint32_t timer_index, vk::PipelineStageFlags2 stage)
 {
-	cb.writeTimestamp(stage, qp, timer_index * 2);
+	cb.writeTimestamp2(stage, qp, timer_index * 2);
 }
 
-void DeviceTimer::stop(vk::CommandBuffer& cb, uint32_t timer_index, vk::PipelineStageFlagBits stage)
+void DeviceTimer::stop(vk::CommandBuffer& cb, uint32_t timer_index, vk::PipelineStageFlags2 stage)
 {
-	cb.writeTimestamp(stage, qp, timer_index * 2 + 1);
+	cb.writeTimestamp2(stage, qp, timer_index * 2 + 1);
 	result_fetched[timer_index] = false;
 }
 } // namespace vkte
