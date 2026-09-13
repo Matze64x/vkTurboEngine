@@ -112,7 +112,7 @@ void VulkanMainContext::create_vma_allocator()
 	vaci.instance = instance.get();
 	vaci.physicalDevice = physical_device.get();
 	vaci.device = logical_device.get();
-	vaci.vulkanApiVersion = VK_API_VERSION_1_3;
+	vaci.vulkanApiVersion = VK_API_VERSION_1_4;
 	vaci.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
 	VmaVulkanFunctions vvf{};
 	vvf.vkGetInstanceProcAddr = vkGetInstanceProcAddr;
