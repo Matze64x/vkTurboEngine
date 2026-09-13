@@ -1,7 +1,39 @@
 #include "vkte/device_feature_chain.hpp"
 
+#include <cstddef>
+
 namespace vkte
 {
+namespace
+{
+// every vk::PhysicalDevice*Features struct is its header (sType, pNext) followed by nothing but vk::Bool32 fields.
+// So instead of naming every feature bit, we can just compare the raw bits after the header.
+template<class T>
+bool bool32_fields_satisfied(const T& requested, const T& supported)
+{
+	constexpr std::size_t header_size = offsetof(T, pNext) + sizeof(T::pNext);
+	constexpr std::size_t count = (sizeof(T) - header_size) / sizeof(vk::Bool32);
+	const vk::Bool32* requested_fields = reinterpret_cast<const vk::Bool32*>(reinterpret_cast<const std::byte*>(&requested) + header_size);
+	const vk::Bool32* supported_fields = reinterpret_cast<const vk::Bool32*>(reinterpret_cast<const std::byte*>(&supported) + header_size);
+	for (std::size_t i = 0; i < count; ++i)
+	{
+		if (requested_fields[i] && !supported_fields[i]) return false;
+	}
+	return true;
+}
+
+template<class... Ts>
+bool structure_chain_satisfied(const vk::StructureChain<Ts...>& requested, const vk::StructureChain<Ts...>& supported)
+{
+	return (bool32_fields_satisfied(requested.template get<Ts>(), supported.template get<Ts>()) && ...);
+}
+} // namespace
+
+bool is_feature_chain_satisfied(const DeviceFeatureChain& requested, const DeviceFeatureChain& supported)
+{
+	return structure_chain_satisfied(requested, supported);
+}
+
 DeviceFeatureChain build_required_feature_chain(const DeviceFeatures& features)
 {
 	DeviceFeatureChain chain;

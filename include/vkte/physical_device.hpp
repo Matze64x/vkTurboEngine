@@ -4,7 +4,6 @@
 #include "vulkan/vulkan.hpp"
 
 #include "vkte/device_features.hpp"
-#include "vkte/extensions_handler.hpp"
 #include "vkte/instance.hpp"
 
 namespace vkte
@@ -19,7 +18,7 @@ public:
 
 private:
 	vk::PhysicalDevice physical_device;
-	ExtensionsHandler extensions_handler;
+	std::vector<const char*> extensions;
 
 	bool is_device_suitable(uint32_t idx, const vk::PhysicalDevice p_device, const DeviceFeatures& features, const std::optional<vk::SurfaceKHR>& surface);
 	bool check_feature_support(vk::PhysicalDevice p_device, const DeviceFeatures& features) const;

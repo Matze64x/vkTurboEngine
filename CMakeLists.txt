@@ -16,7 +16,7 @@ set(SOURCE_FILES
 	src/vkte/device_timer.cpp
 	src/vkte/engine.cpp
 	src/vkte/resource_declarations.cpp
-	src/vkte/extensions_handler.cpp
+	src/vkte/name_list.cpp
 	src/vkte/image.cpp
 	src/vkte/instance.cpp
 	src/vkte/logical_device.cpp
