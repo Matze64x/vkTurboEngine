@@ -15,7 +15,7 @@ struct Features
 {
 	bool khronos_validation = false;
 	bool swapchain = false;
-	LogicalDevice::Features device_features;
+	DeviceFeatures device_features;
 };
 
 class VulkanMainContext

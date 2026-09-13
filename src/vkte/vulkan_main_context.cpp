@@ -60,7 +60,7 @@ void VulkanMainContext::construct(const Features& features, std::unique_ptr<Wind
 	if (features.device_features.ray_query) device_extensions.push_back(VK_KHR_RAY_QUERY_EXTENSION_NAME);
 	if (features.device_features.dynamic_polygon_mode) device_extensions.push_back(VK_EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME);
 	if (features.device_features.shader_atomic_float) device_extensions.push_back(VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME);
-	physical_device.construct(instance, device_extensions, window ? std::optional(surface) : std::nullopt);
+	physical_device.construct(instance, device_extensions, features.device_features, window ? std::optional(surface) : std::nullopt);
 	if (window) queue_families.construct(physical_device.get(), surface);
 	else queue_families.construct(physical_device.get());
 	logical_device.construct(physical_device, features.device_features, queue_families, queues);
