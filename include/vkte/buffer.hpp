@@ -24,15 +24,15 @@ public:
 	Buffer(const VulkanMainContext& vmc, Command& command, const std::vector<T>& data, vk::BufferUsageFlags usage_flags, bool device_local, Queues queues) : Buffer(vmc, command, data.data(), data.size(), usage_flags, device_local, queues)
 	{}
 
-	Buffer(const VulkanMainContext& vmc, Command& command, std::size_t byte_size, vk::BufferUsageFlags usage_flags, bool device_local, Queues queues) : vmc(vmc), command(command), device_local(device_local), byte_size(byte_size)
+	Buffer(const VulkanMainContext& vmc, Command& command, std::size_t byte_size, vk::BufferUsageFlags usage_flags, bool device_local, Queues queues, vk::DeviceSize min_alignment = 0) : vmc(vmc), command(command), device_local(device_local), byte_size(byte_size)
 	{
 		if (device_local)
 		{
-			std::tie(buffer, vmaa) = create_buffer((usage_flags | vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eTransferSrc), {}, byte_size, device_local, queues);
+			std::tie(buffer, vmaa) = create_buffer((usage_flags | vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eTransferSrc), {}, byte_size, device_local, queues, min_alignment);
 		}
 		else
 		{
-			std::tie(buffer, vmaa) = create_buffer(usage_flags, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT, byte_size, device_local, queues);
+			std::tie(buffer, vmaa) = create_buffer(usage_flags, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT, byte_size, device_local, queues, min_alignment);
 		}
 	}
 
@@ -219,7 +219,7 @@ public:
 	void* pNext = nullptr;
 
 private:
-	std::pair<vk::Buffer, VmaAllocation> create_buffer(vk::BufferUsageFlags usage_flags, VmaAllocationCreateFlags vma_flags, std::size_t byte_size, bool device_local, Queues queues)
+	std::pair<vk::Buffer, VmaAllocation> create_buffer(vk::BufferUsageFlags usage_flags, VmaAllocationCreateFlags vma_flags, std::size_t byte_size, bool device_local, Queues queues, vk::DeviceSize min_alignment = 0)
 	{
 		std::vector<uint32_t> queue_indices = vmc.queue_families.get(queues);
 		vk::BufferCreateInfo bci;
@@ -232,6 +232,7 @@ private:
 		VmaAllocationCreateInfo vaci{};
 		vaci.usage = device_local ? VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE : VMA_MEMORY_USAGE_AUTO_PREFER_HOST;
 		vaci.flags = vma_flags;
+		vaci.minAlignment = min_alignment;
 		VkBuffer local_buffer;
 		VmaAllocation local_vmaa;
 		vmaCreateBuffer(vmc.va, (VkBufferCreateInfo*) (&bci), &vaci, (&local_buffer), &local_vmaa, nullptr);

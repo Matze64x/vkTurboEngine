@@ -15,11 +15,8 @@ AccelerationStructureBuilder::ScratchBuffer AccelerationStructureBuilder::create
 		scratch_offset_alignment = as_properties.minAccelerationStructureScratchOffsetAlignment;
 	}
 
-	// Pad buffer and round address up to requirement.
-	const ResourceHandle buffer_handle = storage.add_buffer(buffer_name + " scratch (vkte internal)", build_scratch_size + scratch_offset_alignment - 1, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress, true, QueueFamilyFlags::Compute | QueueFamilyFlags::Graphics | QueueFamilyFlags::Transfer);
-	const vk::DeviceAddress device_address = storage.get_buffer(buffer_handle).get_device_address();
-	const vk::DeviceSize misalignment = device_address % scratch_offset_alignment;
-	return ScratchBuffer{buffer_handle, misalignment == 0 ? device_address : device_address + (scratch_offset_alignment - misalignment)};
+	const ResourceHandle buffer_handle = storage.add_buffer(buffer_name + " scratch (vkte internal)", build_scratch_size, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress, true, QueueFamilyFlags::Compute | QueueFamilyFlags::Graphics | QueueFamilyFlags::Transfer, scratch_offset_alignment);
+	return ScratchBuffer{buffer_handle, storage.get_buffer(buffer_handle).get_device_address()};
 }
 
 void AccelerationStructureBuilder::destruct()
