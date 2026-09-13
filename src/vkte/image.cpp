@@ -416,45 +416,61 @@ vk::Sampler Image::get_sampler() const
 void Image::generate_mipmaps(Command& command)
 {
 	vk::CommandBuffer& cb = command.get_one_time_graphics_buffer();
-	vk::ImageMemoryBarrier imb;
-	imb.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	imb.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	imb.image = image;
-	imb.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
-	imb.subresourceRange.levelCount = 1;
-	imb.subresourceRange.baseArrayLayer = 0;
-	imb.subresourceRange.layerCount = layer_count;
+
+	ImageSubresourceRangeDesc range{
+		.aspect = vk::ImageAspectFlagBits::eColor,
+		.base_mip_level = 0,
+		.level_count = 1,
+		.base_array_layer = 0,
+		.layer_count = layer_count
+	};
 
 	uint32_t mip_w = w;
 	uint32_t mip_h = h;
 	for (uint32_t i = 1; i < mip_levels; ++i)
 	{
-		imb.subresourceRange.baseMipLevel = i - 1;
-		imb.oldLayout = vk::ImageLayout::eTransferDstOptimal;
-		imb.newLayout = vk::ImageLayout::eTransferSrcOptimal;
-		imb.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
-		imb.dstAccessMask = vk::AccessFlagBits::eTransferRead;
-		cb.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eTransfer, {}, nullptr, nullptr, imb);
+		range.base_mip_level = i - 1;
+
+		perform_image_layout_transition(cb, {
+			.image = image,
+			.range = range,
+			.old_layout = vk::ImageLayout::eTransferDstOptimal,
+			.new_layout = vk::ImageLayout::eTransferSrcOptimal,
+			.src_stage = vk::PipelineStageFlagBits2::eTransfer,
+			.src_access = vk::AccessFlagBits2::eTransferWrite,
+			.dst_stage = vk::PipelineStageFlagBits2::eTransfer,
+			.dst_access = vk::AccessFlagBits2::eTransferRead
+		});
 
 		blit_image(cb, image, i - 1, {int32_t(mip_w), int32_t(mip_h), 1}, image, i, {int32_t(mip_w > 1 ? mip_w / 2 : 1), int32_t(mip_h > 1 ? mip_h / 2 : 1), 1}, layer_count);
 
-		imb.oldLayout = vk::ImageLayout::eTransferSrcOptimal;
-		imb.newLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
-		imb.srcAccessMask = vk::AccessFlagBits::eTransferRead;
-		imb.dstAccessMask = vk::AccessFlagBits::eShaderRead;
-		cb.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eFragmentShader, {}, nullptr, nullptr, imb);
+		perform_image_layout_transition(cb, {
+			.image = image,
+			.range = range,
+			.old_layout = vk::ImageLayout::eTransferSrcOptimal,
+			.new_layout = vk::ImageLayout::eShaderReadOnlyOptimal,
+			.src_stage = vk::PipelineStageFlagBits2::eTransfer,
+			.src_access = vk::AccessFlagBits2::eTransferRead,
+			.dst_stage = vk::PipelineStageFlagBits2::eFragmentShader,
+			.dst_access = vk::AccessFlagBits2::eShaderRead
+		});
 
 		if (mip_w > 1) mip_w /= 2;
 		if (mip_h > 1) mip_h /= 2;
 	}
 
-	imb.subresourceRange.baseMipLevel = mip_levels - 1;
-	imb.oldLayout = vk::ImageLayout::eTransferDstOptimal;
-	imb.newLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
-	layout = imb.newLayout;
-	imb.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
-	imb.dstAccessMask = vk::AccessFlagBits::eShaderRead;
-	cb.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eFragmentShader, {}, nullptr, nullptr, imb);
+	range.base_mip_level = mip_levels - 1;
+	perform_image_layout_transition(cb, {
+		.image = image,
+		.range = range,
+		.old_layout = vk::ImageLayout::eTransferDstOptimal,
+		.new_layout = vk::ImageLayout::eShaderReadOnlyOptimal,
+		.src_stage = vk::PipelineStageFlagBits2::eTransfer,
+		.src_access = vk::AccessFlagBits2::eTransferWrite,
+		.dst_stage = vk::PipelineStageFlagBits2::eFragmentShader,
+		.dst_access = vk::AccessFlagBits2::eShaderRead
+	});
+	layout = vk::ImageLayout::eShaderReadOnlyOptimal;
 
 	command.submit_graphics(cb, true);
 }
