@@ -87,8 +87,7 @@ bool PhysicalDevice::is_device_suitable(uint32_t idx, const vk::PhysicalDevice p
 bool PhysicalDevice::check_feature_support(vk::PhysicalDevice p_device, const DeviceFeatures& features) const
 {
 	const DeviceFeatureChain requested = build_required_feature_chain(features);
-	DeviceFeatureChain supported;
-	p_device.getFeatures2(&supported.get<vk::PhysicalDeviceFeatures2>());
+	const DeviceFeatureChain supported = query_supported_feature_chain(p_device);
 	return is_feature_chain_satisfied(requested, supported);
 }
 } // namespace vkte

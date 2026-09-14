@@ -1,6 +1,7 @@
 #include "vkte/device_feature_chain.hpp"
 
 #include <cstddef>
+#include <cstring>
 
 namespace vkte
 {
@@ -8,6 +9,20 @@ namespace
 {
 // every vk::PhysicalDevice*Features struct is its header (sType, pNext) followed by nothing but vk::Bool32 fields.
 // So instead of naming every feature bit, we can just compare the raw bits after the header.
+// Set struct to 0 before to interpret padding as additional bool set to false on both sides.
+template<class T>
+void zero_fields(T& s)
+{
+	constexpr std::size_t header_size = offsetof(T, pNext) + sizeof(T::pNext);
+	std::memset(reinterpret_cast<std::byte*>(&s) + header_size, 0, sizeof(T) - header_size);
+}
+
+template<class... Ts>
+void zero_fields(vk::StructureChain<Ts...>& chain)
+{
+	(zero_fields(chain.template get<Ts>()), ...);
+}
+
 template<class T>
 bool bool32_fields_satisfied(const T& requested, const T& supported)
 {
@@ -34,9 +49,18 @@ bool is_feature_chain_satisfied(const DeviceFeatureChain& requested, const Devic
 	return structure_chain_satisfied(requested, supported);
 }
 
+DeviceFeatureChain query_supported_feature_chain(vk::PhysicalDevice p_device)
+{
+	DeviceFeatureChain chain;
+	zero_fields(chain);
+	p_device.getFeatures2(&chain.get<vk::PhysicalDeviceFeatures2>());
+	return chain;
+}
+
 DeviceFeatureChain build_required_feature_chain(const DeviceFeatures& features)
 {
 	DeviceFeatureChain chain;
+	zero_fields(chain);
 
 	chain.get<vk::PhysicalDeviceVulkan11Features>().shaderDrawParameters = VK_TRUE;
 
