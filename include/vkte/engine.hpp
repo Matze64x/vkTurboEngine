@@ -36,14 +36,18 @@ struct FrameSettings
 	vk::Format color_format = vk::Format::eUndefined;
 	vk::Format depth_format = vk::Format::eUndefined;
 	vk::SampleCountFlagBits samples = vk::SampleCountFlagBits::e1;
-	uint32_t frames_in_flight = 1;
 };
 
 class Engine
 {
 public:
+	static constexpr uint32_t frames_in_flight = 2;
+
 	explicit Engine(const EngineSettings& settings);
 	~Engine();
+	void begin_frame();
+	void end_frame();
+	uint32_t get_current_frame() const { return current_frame; }
 
 	// the component must outlive the Engine
 	void register_component(Component& component);
@@ -93,6 +97,7 @@ public:
 	vk::Result present(const vk::PresentInfoKHR& present_info) const;
 
 private:
+	uint32_t current_frame = 0;
 	std::unique_ptr<Window> window;
 	VulkanMainContext vmc;
 	Command command;

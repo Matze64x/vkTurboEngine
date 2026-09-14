@@ -79,6 +79,14 @@ const std::vector<vk::DescriptorSet>& Engine::get_descriptor_sets(DescriptorSets
 	return descriptor_sets.at(handle.id);
 }
 
+void Engine::begin_frame()
+{}
+
+void Engine::end_frame()
+{
+	current_frame = (current_frame + 1) % frames_in_flight;
+}
+
 void Engine::construct_components(const FrameSettings& settings)
 {
 	frame_settings = settings;
