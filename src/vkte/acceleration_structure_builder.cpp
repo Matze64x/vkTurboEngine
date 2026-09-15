@@ -15,7 +15,7 @@ AccelerationStructureBuilder::ScratchBuffer AccelerationStructureBuilder::create
 		scratch_offset_alignment = as_properties.minAccelerationStructureScratchOffsetAlignment;
 	}
 
-	const ResourceHandle buffer_handle = storage.add_buffer(buffer_name + " scratch (vkte internal)", build_scratch_size, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress, true, QueueFamilyFlags::Compute | QueueFamilyFlags::Graphics | QueueFamilyFlags::Transfer, scratch_offset_alignment);
+	const ResourceHandle buffer_handle = storage.add_buffer(buffer_name + " scratch (vkte internal)", build_scratch_size, vk::BufferUsageFlagBits::eStorageBuffer, true, QueueFamilyFlags::Compute | QueueFamilyFlags::Graphics | QueueFamilyFlags::Transfer, scratch_offset_alignment);
 	return ScratchBuffer{buffer_handle, storage.get_buffer(buffer_handle).get_device_address()};
 }
 
@@ -91,7 +91,7 @@ uint32_t AccelerationStructureBuilder::add_blas(const std::string& buffer_name, 
 	blas.asbgi.pGeometries = blas.asgs.data();
 
 	vk::AccelerationStructureBuildSizesInfoKHR asbsi = vmc.logical_device.get().getAccelerationStructureBuildSizesKHR(vk::AccelerationStructureBuildTypeKHR::eDevice, blas.asbgi, blas.num_triangles);
-	blas.buffer = storage.add_buffer(buffer_name, asbsi.accelerationStructureSize, vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR, true, QueueFamilyFlags::Compute | QueueFamilyFlags::Graphics | QueueFamilyFlags::Transfer);
+	blas.buffer = storage.add_buffer(buffer_name, asbsi.accelerationStructureSize, vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR, true, QueueFamilyFlags::Compute | QueueFamilyFlags::Graphics | QueueFamilyFlags::Transfer);
 
 	blas.asci.buffer = storage.get_buffer(blas.buffer).get();
 	blas.asci.size = asbsi.accelerationStructureSize;
@@ -139,7 +139,7 @@ void AccelerationStructureBuilder::update_instance(uint32_t instance_idx, const 
 
 void AccelerationStructureBuilder::construct(vk::CommandBuffer& cb, QueueFamilyFlags build_queue, const std::string& buffer_name)
 {
-	instances_buffer = storage.add_buffer(buffer_name + " instances (vkte internal)", instances, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR, true, QueueFamilyFlags::Compute | QueueFamilyFlags::Graphics | QueueFamilyFlags::Transfer);
+	instances_buffer = storage.add_buffer(buffer_name + " instances (vkte internal)", instances, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR, true, QueueFamilyFlags::Compute | QueueFamilyFlags::Graphics | QueueFamilyFlags::Transfer);
 
 	vk::DeviceOrHostAddressConstKHR instance_data_device_address;
 	instance_data_device_address.deviceAddress = storage.get_buffer(instances_buffer).get_device_address();
@@ -160,7 +160,7 @@ void AccelerationStructureBuilder::construct(vk::CommandBuffer& cb, QueueFamilyF
 
 	vk::AccelerationStructureBuildSizesInfoKHR asbsi = vmc.logical_device.get().getAccelerationStructureBuildSizesKHR(vk::AccelerationStructureBuildTypeKHR::eDevice, top_level_as.asbgi, top_level_as.primitive_count);
 
-	top_level_as.buffer = storage.add_buffer(buffer_name, asbsi.accelerationStructureSize, vk::BufferUsageFlagBits::eShaderDeviceAddress | vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR, true, QueueFamilyFlags::Compute | QueueFamilyFlags::Graphics | QueueFamilyFlags::Transfer);
+	top_level_as.buffer = storage.add_buffer(buffer_name, asbsi.accelerationStructureSize, vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR, true, QueueFamilyFlags::Compute | QueueFamilyFlags::Graphics | QueueFamilyFlags::Transfer);
 
 	top_level_as.asci.buffer = storage.get_buffer(top_level_as.buffer).get();
 	top_level_as.asci.size = asbsi.accelerationStructureSize;

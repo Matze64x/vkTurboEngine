@@ -26,6 +26,7 @@ public:
 
 	Buffer(const VulkanMainContext& vmc, Command& command, std::size_t byte_size, vk::BufferUsageFlags usage_flags, bool device_local, Queues queues, vk::DeviceSize min_alignment = 0) : vmc(vmc), command(command), device_local(device_local), byte_size(byte_size)
 	{
+		usage_flags |= vk::BufferUsageFlagBits::eShaderDeviceAddress;
 		if (device_local)
 		{
 			std::tie(buffer, vmaa) = create_buffer((usage_flags | vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eTransferSrc), {}, byte_size, device_local, queues, min_alignment);
