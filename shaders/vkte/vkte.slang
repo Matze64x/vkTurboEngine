@@ -6,15 +6,17 @@ namespace vkte
 	[[vk::binding(1, 0)]] StructuredBuffer<uint32_t> gStorageTextureValid;
 	[[vk::binding(2, 0)]] Sampler2D gStorageTextures[];
 
+	static const uint kInvalidHandleId = 0xFFFFFFFFu;
+
 	public struct BufferHandle
 	{
-		uint id;
-		public bool valid() { return gStorageAddressTable[id] != 0; }
+		uint id = kInvalidHandleId;
+		public bool valid() { return id != kInvalidHandleId && gStorageAddressTable[id] != 0; }
 	}
 	public struct ImageHandle
 	{
-		uint id;
-		public bool valid() { return gStorageTextureValid[id] != 0; }
+		uint id = kInvalidHandleId;
+		public bool valid() { return id != kInvalidHandleId && gStorageTextureValid[id] != 0; }
 	}
 
 	public struct Buffer<T>
@@ -35,11 +37,17 @@ namespace vkte
 
 	public Buffer<T> get_buffer<T>(BufferHandle handle)
 	{
+		if (!handle.valid()) return Buffer<T>(vk::BufferPointer<T>(0UL));
 		return Buffer<T>(vk::BufferPointer<T>(gStorageAddressTable[handle.id]));
 	}
 
 	public Ref<T> get_single_element_buffer<T>(BufferHandle handle)
 	{
 		return vk::BufferPointer<T>(gStorageAddressTable[handle.id]).Get();
+	}
+
+	public RaytracingAccelerationStructure get_acceleration_structure(BufferHandle handle)
+	{
+		return RaytracingAccelerationStructure(gStorageAddressTable[handle.id]);
 	}
 }

@@ -146,8 +146,21 @@ void MemoryManager::unregister_texture(const ImageHandle& image_handle)
 
 BufferHandle MemoryManager::register_buffer(const ResourceHandle& buffer_handle)
 {
+	Buffer& buffer = storage.get_buffer(buffer_handle);
+	if (buffer.pNext && reinterpret_cast<const vk::BaseInStructure*>(buffer.pNext)->sType == vk::StructureType::eWriteDescriptorSetAccelerationStructureKHR)
+	{
+		const vk::WriteDescriptorSetAccelerationStructureKHR& wdsas = *reinterpret_cast<const vk::WriteDescriptorSetAccelerationStructureKHR*>(buffer.pNext);
+		vk::AccelerationStructureDeviceAddressInfoKHR asdai;
+		asdai.accelerationStructure = wdsas.pAccelerationStructures[0];
+		return register_address(vmc.logical_device.get().getAccelerationStructureAddressKHR(&asdai));
+	}
+	return register_address(buffer.get_device_address());
+}
+
+BufferHandle MemoryManager::register_address(uint64_t address)
+{
 	const uint32_t index = buffer_indices.allocate(max_bindless_buffers);
-	buffer_addresses[index] = storage.get_buffer(buffer_handle).get_device_address();
+	buffer_addresses[index] = address;
 	mark_buffer_dirty(index);
 	return BufferHandle{index};
 }

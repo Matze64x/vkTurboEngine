@@ -41,6 +41,7 @@ private:
 	};
 	void mark_texture_dirty(uint32_t index);
 	void mark_buffer_dirty(uint32_t index);
+	BufferHandle register_address(uint64_t address);
 
 	const VulkanMainContext& vmc;
 	Storage& storage;

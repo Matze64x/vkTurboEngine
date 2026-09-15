@@ -167,10 +167,6 @@ void AccelerationStructureBuilder::construct(vk::CommandBuffer& cb, QueueFamilyF
 	top_level_as.asci.type = vk::AccelerationStructureTypeKHR::eTopLevel;
 	top_level_as.handle = vmc.logical_device.get().createAccelerationStructureKHR(top_level_as.asci);
 
-	vk::AccelerationStructureDeviceAddressInfoKHR asdai;
-	asdai.accelerationStructure = top_level_as.handle;
-	top_level_as.device_address = vmc.logical_device.get().getAccelerationStructureAddressKHR(&asdai);
-
 	wdsas.accelerationStructureCount = 1;
 	wdsas.pAccelerationStructures = &(top_level_as.handle);
 	storage.get_buffer(top_level_as.buffer).pNext = &(wdsas);

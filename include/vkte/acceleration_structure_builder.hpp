@@ -29,7 +29,6 @@ public:
 	void update_instance(uint32_t instance_idx, const vk::TransformMatrixKHR& M);
 	void construct(vk::CommandBuffer& cb, QueueFamilyFlags build_queue, const std::string& buffer_name);
 	void update_tlas(vk::CommandBuffer& cb, QueueFamilyFlags build_queue);
-	uint64_t get_tlas_device_address() const { return top_level_as.device_address; }
 
 private:
 	struct BLAS {
@@ -52,7 +51,6 @@ private:
 		vk::AccelerationStructureCreateInfoKHR asci;
 		vk::AccelerationStructureBuildRangeInfoKHR asbri;
 		vk::AccelerationStructureKHR handle;
-		uint64_t device_address = 0;
 		ResourceHandle buffer;
 		ResourceHandle scratch_buffer;
 	};
