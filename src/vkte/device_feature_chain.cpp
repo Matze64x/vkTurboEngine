@@ -79,8 +79,9 @@ DeviceFeatureChain build_required_feature_chain(const DeviceFeatures& features)
 	vulkan_13.shaderDemoteToHelperInvocation = VK_TRUE;
 	vulkan_13.dynamicRendering = VK_TRUE;
 
-	chain.get<vk::PhysicalDeviceAccelerationStructureFeaturesKHR>().accelerationStructure = features.acceleration_structure;
-	chain.get<vk::PhysicalDeviceRayQueryFeaturesKHR>().rayQuery = features.ray_query;
+	chain.get<vk::PhysicalDeviceAccelerationStructureFeaturesKHR>().accelerationStructure = features.ray_tracing;
+	chain.get<vk::PhysicalDeviceRayQueryFeaturesKHR>().rayQuery = features.ray_tracing;
+	chain.get<vk::PhysicalDeviceRayTracingPipelineFeaturesKHR>().rayTracingPipeline = features.ray_tracing;
 	chain.get<vk::PhysicalDeviceExtendedDynamicState3FeaturesEXT>().extendedDynamicState3PolygonMode = features.dynamic_polygon_mode;
 
 	vk::PhysicalDeviceShaderAtomicFloatFeaturesEXT& atomic_float = chain.get<vk::PhysicalDeviceShaderAtomicFloatFeaturesEXT>();

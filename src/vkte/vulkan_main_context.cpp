@@ -52,12 +52,14 @@ void VulkanMainContext::construct(const Features& features, std::unique_ptr<Wind
 	if (window) surface = window->create_surface(instance.get());
 	std::vector<const char*> device_extensions;
 	if (features.swapchain) device_extensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
-	if (features.device_features.acceleration_structure)
+	if (features.device_features.ray_tracing)
 	{
 		device_extensions.push_back(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
 		device_extensions.push_back(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);
+		device_extensions.push_back(VK_KHR_RAY_QUERY_EXTENSION_NAME);
+		device_extensions.push_back(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME);
+		device_extensions.push_back(VK_KHR_PIPELINE_LIBRARY_EXTENSION_NAME);
 	}
-	if (features.device_features.ray_query) device_extensions.push_back(VK_KHR_RAY_QUERY_EXTENSION_NAME);
 	if (features.device_features.dynamic_polygon_mode) device_extensions.push_back(VK_EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME);
 	if (features.device_features.shader_atomic_float) device_extensions.push_back(VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME);
 	physical_device.construct(instance, device_extensions, features.device_features, window ? std::optional(surface) : std::nullopt);
