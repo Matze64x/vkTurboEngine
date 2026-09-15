@@ -11,10 +11,11 @@
 
 namespace vkte
 {
+class Engine;
+
 class Storage
 {
 public:
-	Storage(const VulkanMainContext& vmc, Command& command);
 	std::string get_memory_info();
 
 	template<typename... Args>
@@ -88,6 +89,9 @@ public:
 	uint32_t get_image_index(const std::string& name) const;
 
 private:
+	friend class Engine;
+	Storage(const VulkanMainContext& vmc, Command& command);
+
 	const VulkanMainContext& vmc;
 	Command& command;
 

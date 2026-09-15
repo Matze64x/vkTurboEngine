@@ -39,15 +39,17 @@ public:
 
 	explicit Pipeline(const VulkanMainContext& vmc);
 
-	void construct(const GraphicsSettings& settings, const ShaderRepository& shader_repository, vk::DescriptorSetLayout* set_layout);
-	void construct(const ComputeSettings& settings, const ShaderRepository& shader_repository, vk::DescriptorSetLayout* set_layout);
+	void construct(const GraphicsSettings& settings, const ShaderRepository& shader_repository, const std::vector<vk::DescriptorSetLayout>& set_layouts);
+	void construct(const ComputeSettings& settings, const ShaderRepository& shader_repository, const std::vector<vk::DescriptorSetLayout>& set_layouts);
 	void destruct();
 	const vk::Pipeline& get() const;
 	const vk::PipelineLayout& get_layout() const;
+	vk::PipelineBindPoint get_bind_point() const { return bind_point; }
 
 private:
 	const VulkanMainContext& vmc;
 	vk::PipelineLayout pipeline_layout;
 	vk::Pipeline pipeline;
+	vk::PipelineBindPoint bind_point;
 };
 } // namespace vkte

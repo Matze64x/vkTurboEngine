@@ -3,11 +3,12 @@
 #include <algorithm>
 #include <deque>
 #include <unordered_map>
+#include "vkte/global_constants.hpp"
 #include "vkte/vkte_log.hpp"
 
 namespace vkte
 {
-Engine::Engine(const EngineSettings& settings) : command(vmc), storage(vmc, command), shader_repository(thread_manager)
+Engine::Engine(const EngineSettings& settings) : command(vmc), storage(vmc, command), memory_manager(vmc, storage), shader_repository(thread_manager)
 {
 	if (settings.enable_window)
 	{
@@ -16,6 +17,7 @@ Engine::Engine(const EngineSettings& settings) : command(vmc), storage(vmc, comm
 	}
 	vmc.construct(settings.features, window);
 	command.construct();
+	memory_manager.construct();
 	shader_repository.construct(vmc.logical_device.get(), settings.shader_root_dir);
 	if (window)
 	{
@@ -34,6 +36,7 @@ Engine::~Engine()
 		ui->destruct(vmc);
 		swapchain->destruct(vmc.logical_device.get(), storage);
 	}
+	memory_manager.destruct();
 	storage.clear();
 	for (const vk::Semaphore& semaphore : semaphores)
 	{
@@ -79,8 +82,19 @@ const std::vector<vk::DescriptorSet>& Engine::get_descriptor_sets(DescriptorSets
 	return descriptor_sets.at(handle.id);
 }
 
+void Engine::bind(vk::CommandBuffer cb, PipelineHandle pipeline, DescriptorSetsHandle sets, uint32_t descriptor_set_index) const
+{
+	VKTE_ASSERT(pipeline.valid() && pipeline.id < pipelines.size(), "vkte: Invalid pipeline handle!");
+	const Pipeline& p = pipelines.at(pipeline.id);
+	cb.bindPipeline(p.get_bind_point(), p.get());
+	memory_manager.bind_bindless_set(cb, p.get_bind_point(), p.get_layout(), current_frame);
+	if (sets.valid()) cb.bindDescriptorSets(p.get_bind_point(), p.get_layout(), 1, get_descriptor_sets(sets)[descriptor_set_index], {});
+}
+
 void Engine::begin_frame()
-{}
+{
+	memory_manager.begin_frame(current_frame);
+}
 
 void Engine::end_frame()
 {
@@ -149,9 +163,10 @@ void Engine::build_pipelines()
 	{
 		const ResourceDeclarations::PipelineEntry& entry = *declarations.pipelines[i];
 		Pipeline& pipeline = pipelines[i];
-		vk::DescriptorSetLayout* set_layout = entry.layout.valid() ? &descriptor_set_layouts.at(entry.layout.id) : nullptr;
-		if (entry.graphics_settings) pipeline.construct(*entry.graphics_settings, shader_repository, set_layout);
-		else if (entry.compute_settings) pipeline.construct(*entry.compute_settings, shader_repository, set_layout);
+		std::vector<vk::DescriptorSetLayout> set_layouts{memory_manager.get_bindless_set_layout()};
+		if (entry.layout.valid()) set_layouts.push_back(descriptor_set_layouts.at(entry.layout.id));
+		if (entry.graphics_settings) pipeline.construct(*entry.graphics_settings, shader_repository, set_layouts);
+		else if (entry.compute_settings) pipeline.construct(*entry.compute_settings, shader_repository, set_layouts);
 		else VKTE_THROW("vkte: Pipeline with no valid settings!");
 		set_debug_name(vk::ObjectType::ePipeline, uint64_t(static_cast<vk::Pipeline::CType>(pipeline.get())), std::format("{}_pipeline_{}", owner_name(entry.owner), i));
 	}

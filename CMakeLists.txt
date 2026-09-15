@@ -20,6 +20,7 @@ set(SOURCE_FILES
 	src/vkte/image.cpp
 	src/vkte/instance.cpp
 	src/vkte/logical_device.cpp
+	src/vkte/memory_manager.cpp
 	src/vkte/physical_device.cpp
 	src/vkte/acceleration_structure_builder.cpp
 	src/vkte/pipeline.cpp
@@ -75,6 +76,7 @@ target_link_libraries(vkte PRIVATE
 	slang
 )
 target_compile_definitions(vkte PUBLIC VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1 VULKAN_HPP_STORAGE_SHARED=1 IMGUI_IMPL_VULKAN_NO_PROTOTYPES=1)
+target_compile_definitions(vkte PRIVATE VKTE_BUNDLED_SHADER_DIR="${PROJECT_SOURCE_DIR}/shaders/vkte")
 if (ENABLE_VKTE_LOGGING)
 	target_compile_definitions(vkte PUBLIC VKTE_LOGGING=1)
 endif()

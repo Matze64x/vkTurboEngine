@@ -10,7 +10,7 @@ namespace vkte
 Pipeline::Pipeline(const VulkanMainContext& vmc) : vmc(vmc)
 {}
 
-void Pipeline::construct(const GraphicsSettings& settings, const ShaderRepository& shader_repository, vk::DescriptorSetLayout* set_layout)
+void Pipeline::construct(const GraphicsSettings& settings, const ShaderRepository& shader_repository, const std::vector<vk::DescriptorSetLayout>& set_layouts)
 {
 	std::vector<vk::PipelineShaderStageCreateInfo> shader_stages(settings.shaders.size());
 	for (size_t i = 0; i < settings.shaders.size(); i++) shader_stages[i] = shader_repository.get_shader_stage(settings.shaders[i]);
@@ -96,8 +96,8 @@ void Pipeline::construct(const GraphicsSettings& settings, const ShaderRepositor
 	pcbsci.blendConstants[3] = 0.0f;
 
 	vk::PipelineLayoutCreateInfo plci;
-	plci.setLayoutCount = 1;
-	plci.pSetLayouts = set_layout;
+	plci.setLayoutCount = set_layouts.size();
+	plci.pSetLayouts = set_layouts.data();
 	plci.pushConstantRangeCount = settings.pcrs.size();
 	plci.pPushConstantRanges = settings.pcrs.data();
 
@@ -140,9 +140,10 @@ void Pipeline::construct(const GraphicsSettings& settings, const ShaderRepositor
 	vk::ResultValue<vk::Pipeline> pipeline_result_value = vmc.logical_device.get().createGraphicsPipeline(VK_NULL_HANDLE, gpci);
 	VKTE_CHECK(pipeline_result_value.result, "Failed to create pipeline!");
 	pipeline = pipeline_result_value.value;
+	bind_point = vk::PipelineBindPoint::eGraphics;
 }
 
-void Pipeline::construct(const ComputeSettings& settings, const ShaderRepository& shader_repository, vk::DescriptorSetLayout* set_layout)
+void Pipeline::construct(const ComputeSettings& settings, const ShaderRepository& shader_repository, const std::vector<vk::DescriptorSetLayout>& set_layouts)
 {
 	vk::PipelineShaderStageCreateInfo shader_stage = shader_repository.get_shader_stage(settings.shader);
 
@@ -152,8 +153,8 @@ void Pipeline::construct(const ComputeSettings& settings, const ShaderRepository
 	pcr.stageFlags = vk::ShaderStageFlagBits::eCompute;
 
 	vk::PipelineLayoutCreateInfo plci;
-	plci.setLayoutCount = 1;
-	plci.pSetLayouts = set_layout;
+	plci.setLayoutCount = set_layouts.size();
+	plci.pSetLayouts = set_layouts.data();
 	if (settings.push_constant_byte_size > 0)
 	{
 		plci.pushConstantRangeCount = 1;
@@ -169,6 +170,7 @@ void Pipeline::construct(const ComputeSettings& settings, const ShaderRepository
 	vk::ResultValue<vk::Pipeline> compute_pipeline_result_value = vmc.logical_device.get().createComputePipeline(VK_NULL_HANDLE, cpci);
 	VKTE_CHECK(compute_pipeline_result_value.result, "Failed to create compute pipeline!");
 	pipeline = compute_pipeline_result_value.value;
+	bind_point = vk::PipelineBindPoint::eCompute;
 }
 
 void Pipeline::destruct()

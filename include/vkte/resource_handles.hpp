@@ -23,6 +23,11 @@ struct DeviceTimerHandle : HandleBase {};
 struct AccelerationStructureBuilderHandle : HandleBase {};
 struct CommandBufferHandle : HandleBase {};
 
+// Memory Manager Handles
+struct BufferHandle : HandleBase {};
+struct ImageHandle : HandleBase {};
+
+// Storage Handle
 struct ResourceHandle : HandleBase
 {
 	// ID takes precedence over name if both are set.

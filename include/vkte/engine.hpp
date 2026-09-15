@@ -6,6 +6,8 @@
 #include "vkte/acceleration_structure_builder.hpp"
 #include "vkte/component.hpp"
 #include "vkte/device_timer.hpp"
+#include "vkte/global_constants.hpp"
+#include "vkte/memory_manager.hpp"
 #include "vkte/pipeline.hpp"
 #include "vkte/resource_declarations.hpp"
 #include "vkte/resource_handles.hpp"
@@ -41,10 +43,9 @@ struct FrameSettings
 class Engine
 {
 public:
-	static constexpr uint32_t frames_in_flight = 2;
-
 	explicit Engine(const EngineSettings& settings);
 	~Engine();
+	// A frame can only begin again after it's no longer in flight.
 	void begin_frame();
 	void end_frame();
 	uint32_t get_current_frame() const { return current_frame; }
@@ -61,6 +62,7 @@ public:
 	const vk::PipelineLayout& get_pipeline_layout(PipelineHandle handle) const;
 	const vk::DescriptorSetLayout& get_descriptor_set_layout(DescriptorSetLayoutHandle handle) const;
 	const std::vector<vk::DescriptorSet>& get_descriptor_sets(DescriptorSetsHandle handle) const;
+	void bind(vk::CommandBuffer cb, PipelineHandle pipeline, DescriptorSetsHandle sets = {}, uint32_t descriptor_set_index = 0) const;
 	void wait_idle() const;
 	const vk::Device& get_device() const { return vmc.logical_device.get(); }
 	vk::PhysicalDeviceProperties get_physical_device_properties() const { return vmc.physical_device.get().getProperties(); }
@@ -68,6 +70,7 @@ public:
 	Window& get_window();
 	Command& get_command() { return command; }
 	Storage& get_storage() { return storage; }
+	MemoryManager& get_memory_manager() { return memory_manager; }
 	ThreadManager& get_thread_manager() { return thread_manager; }
 
 	SemaphoreHandle add_semaphore();
@@ -102,6 +105,7 @@ private:
 	VulkanMainContext vmc;
 	Command command;
 	Storage storage;
+	MemoryManager memory_manager;
 	ThreadManager thread_manager;
 	ShaderRepository shader_repository;
 	FrameSettings frame_settings;

@@ -62,13 +62,13 @@ static Slang::ComPtr<slang::ISession> create_session(Slang::ComPtr<slang::IGloba
 	target_desc.compilerOptionEntries = &capability_entry;
 	target_desc.compilerOptionEntryCount = 1;
 
-	const char* search_path = shader_root_dir.c_str();
+	const char* search_paths[] = {shader_root_dir.c_str(), VKTE_BUNDLED_SHADER_DIR};
 	slang::SessionDesc session_desc{};
 	session_desc.targets = &target_desc;
 	session_desc.targetCount = 1;
 	session_desc.defaultMatrixLayoutMode = SLANG_MATRIX_LAYOUT_COLUMN_MAJOR;
-	session_desc.searchPaths = &search_path;
-	session_desc.searchPathCount = 1;
+	session_desc.searchPaths = search_paths;
+	session_desc.searchPathCount = 2;
 
 	Slang::ComPtr<slang::ISession> session;
 	VKTE_ASSERT(SLANG_SUCCEEDED(global_session->createSession(session_desc, session.writeRef())), "vkte: Failed to create Slang session");
