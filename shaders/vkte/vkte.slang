@@ -21,7 +21,11 @@ namespace vkte
 	{
 		__init(vk::BufferPointer<T> pointer) { buffer_pointer = pointer; }
 		vk::BufferPointer<T> buffer_pointer;
-		public Ref<T> at(uint index) { return buffer_pointer.getPtr()[index]; }
+		public __subscript(uint index) -> T
+		{
+			get { return buffer_pointer.getPtr()[index]; }
+			set { buffer_pointer.getPtr()[index] = newValue; }
+		}
 	}
 
 	public Sampler2D get_texture(ImageHandle handle)
