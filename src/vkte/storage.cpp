@@ -1,11 +1,71 @@
 #include "vkte/storage.hpp"
 
+#include "vkte/command.hpp"
 #include "vkte/vkte_log.hpp"
+#include "vkte/vulkan_main_context.hpp"
 
 namespace vkte
 {
 Storage::Storage(const VulkanMainContext& vmc, Command& command) : vmc(vmc), command(command)
 {}
+
+ResourceHandle Storage::add_buffer(const std::string& name, const Buffer::Settings& settings)
+{
+	if (buffer_names.contains(name))
+	{
+		if (buffers.at(buffer_names.at(name))->buffer.has_value())
+		{
+			// buffer name is already taken by an existing buffer
+			VKTE_WARN("vkte: Duplicate buffer name: {}", name);
+		}
+		else
+		{
+			// buffer name exists but the corresponding buffer got deleted; so, reuse the name
+			buffers.at(buffer_names.at(name))->name = name;
+			buffers.at(buffer_names.at(name))->buffer.emplace(vmc, command, settings);
+		}
+	}
+	else
+	{
+		buffers.push_back(std::make_unique<BufferElement>(name, vmc, command, settings));
+		buffer_names.emplace(name, uint32_t(buffers.size() - 1));
+	}
+	const vk::Buffer& b = buffers.at(buffer_names.at(name))->buffer.value().get();
+	vk::DebugUtilsObjectNameInfoEXT duoni(b.objectType, uint64_t(static_cast<vk::Buffer::CType>(b)), name.c_str());
+	vmc.logical_device.get().setDebugUtilsObjectNameEXT(duoni);
+	VmaAllocationInfo alloc_info = buffers.at(buffer_names.at(name))->buffer.value().get_allocation_info();
+	VKTE_DEBUG("vkte: Creating buffer \"{}\", Size: {}, Type: {}", name, alloc_info.size, alloc_info.memoryType);
+	return ResourceHandle(buffer_names.at(name), name, false);
+}
+
+ResourceHandle Storage::add_image(const std::string& name, const Image::Settings& settings)
+{
+	if (image_names.contains(name))
+	{
+		if (images.at(image_names.at(name))->image.has_value())
+		{
+			// image name is already taken by an existing image
+			VKTE_WARN("vkte: Duplicate image name: {}", name);
+		}
+		else
+		{
+			// image name exists but the corresponding image got deleted; so, reuse the name
+			images.at(image_names.at(name))->name = name;
+			images.at(image_names.at(name))->image.emplace(vmc, command, settings);
+		}
+	}
+	else
+	{
+		images.push_back(std::make_unique<ImageElement>(name, vmc, command, settings));
+		image_names.emplace(name, uint32_t(images.size() - 1));
+	}
+	const vk::Image& i = images.at(image_names.at(name))->image.value().get_image();
+	vk::DebugUtilsObjectNameInfoEXT duoni(i.objectType, uint64_t(static_cast<vk::Image::CType>(i)), name.c_str());
+	vmc.logical_device.get().setDebugUtilsObjectNameEXT(duoni);
+	VmaAllocationInfo alloc_info = images.at(image_names.at(name))->image.value().get_allocation_info();
+	VKTE_DEBUG("vkte: Creating image \"{}\", Size: {}, Type: {}", name, alloc_info.size, alloc_info.memoryType);
+	return ResourceHandle(image_names.at(name), name, true);
+}
 
 std::string Storage::get_memory_info()
 {
@@ -47,7 +107,6 @@ void Storage::destroy(const ResourceHandle& handle)
 		{
 			VmaAllocationInfo alloc_info = images.at(idx)->image.value().get_allocation_info();
 			VKTE_DEBUG("vkte: Destroying image \"{}\", Size: {}, Type: {}", images.at(idx)->name, alloc_info.size, alloc_info.memoryType);
-			images.at(idx)->image.value().destruct();
 			images.at(idx)->image.reset();
 		}
 		else
@@ -62,7 +121,6 @@ void Storage::destroy(const ResourceHandle& handle)
 		{
 			VmaAllocationInfo alloc_info = buffers.at(idx)->buffer.value().get_allocation_info();
 			VKTE_DEBUG("vkte: Destroying buffer \"{}\", Size: {}, Type: {}", buffers.at(idx)->name, alloc_info.size, alloc_info.memoryType);
-			buffers.at(idx)->buffer.value().destruct();
 			buffers.at(idx)->buffer.reset();
 		}
 		else
@@ -76,21 +134,13 @@ void Storage::clear()
 {
 	for (const std::pair<std::string, uint32_t>& buffer : buffer_names)
 	{
-		if (buffers[buffer.second]->buffer.has_value())
-		{
-			VKTE_WARN("vkte: Buffer \"{}\" not destroyed! Cleaning up...", buffer.first);
-			buffers[buffer.second]->buffer.value().destruct();
-		}
+		if (buffers[buffer.second]->buffer.has_value()) VKTE_WARN("vkte: Buffer \"{}\" not destroyed! Cleaning up...", buffer.first);
 	}
 	buffers.clear();
 	buffer_names.clear();
 	for (const std::pair<std::string, uint32_t>& image : image_names)
 	{
-		if (images[image.second]->image.has_value())
-		{
-			VKTE_WARN("vkte: Image \"{}\" not destroyed! Cleaning up...", image.first);
-			images[image.second]->image.value().destruct();
-		}
+		if (images[image.second]->image.has_value()) VKTE_WARN("vkte: Image \"{}\" not destroyed! Cleaning up...", image.first);
 	}
 	images.clear();
 	image_names.clear();

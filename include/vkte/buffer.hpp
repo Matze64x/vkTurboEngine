@@ -1,126 +1,45 @@
 #pragma once
 
-#include <utility>
+#include <cstddef>
+#include <functional>
+#include <span>
+#include <vector>
 #include "vulkan/vulkan.hpp"
+#include "vk_mem_alloc.h"
 
+#include "vkte/memory_location.hpp"
 #include "vkte/queue_families.hpp"
-#include "vkte/vkte_log.hpp"
-#include "vkte/command.hpp"
-#include "vkte/vulkan_main_context.hpp"
 
 namespace vkte
 {
+class VulkanMainContext;
+class Command;
+
 class Buffer
 {
 public:
-	template<class T>
-	Buffer(const VulkanMainContext& vmc, Command& command, const T* data, std::size_t elements, vk::BufferUsageFlags usage_flags, bool device_local, Queues queues) : Buffer(vmc, command, sizeof(T) * elements, usage_flags, device_local, queues)
+	struct Settings
 	{
-		element_count = elements;
-		update_data(data, elements);
-	}
+		std::size_t byte_size = 0;
+		std::span<const std::byte> initial_data{};
+		std::size_t element_count = 0;
+		vk::BufferUsageFlags usage_flags{};
+		MemoryLocation location = MemoryLocation::DeviceLocal;
+		Queues queues{};
+		vk::DeviceSize min_alignment = 0;
+	};
 
-	template<class T>
-	Buffer(const VulkanMainContext& vmc, Command& command, const std::vector<T>& data, vk::BufferUsageFlags usage_flags, bool device_local, Queues queues) : Buffer(vmc, command, data.data(), data.size(), usage_flags, device_local, queues)
-	{}
-
-	Buffer(const VulkanMainContext& vmc, Command& command, std::size_t byte_size, vk::BufferUsageFlags usage_flags, bool device_local, Queues queues, vk::DeviceSize min_alignment = 0) : vmc(vmc), command(command), device_local(device_local), byte_size(byte_size)
-	{
-		usage_flags |= vk::BufferUsageFlagBits::eShaderDeviceAddress;
-		if (device_local)
-		{
-			std::tie(buffer, vmaa) = create_buffer((usage_flags | vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eTransferSrc), {}, byte_size, device_local, queues, min_alignment);
-		}
-		else
-		{
-			std::tie(buffer, vmaa) = create_buffer(usage_flags, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT, byte_size, device_local, queues, min_alignment);
-		}
-	}
-
-	void destruct()
-	{
-		vmaDestroyBuffer(vmc.va, buffer, vmaa);
-	}
-
-	const vk::Buffer& get() const
-	{
-		return buffer;
-	}
-
-	uint64_t get_element_count() const
-	{
-		return element_count;
-	}
-
-	uint64_t get_byte_size() const
-	{
-		return byte_size;
-	}
-
-	void update_data_bytes(int constant, std::size_t byte_count)
-	{
-		VKTE_ASSERT(byte_count <= byte_size, "vkte: Data is larger than buffer!");
-
-		if (device_local)
-		{
-			auto [staging_buffer, staging_vmaa] = create_buffer((vk::BufferUsageFlagBits::eTransferSrc), VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT, byte_count, true, QueueFamilyFlags::Transfer);
-			void* mapped_mem;
-			vmaMapMemory(vmc.va, staging_vmaa, &mapped_mem);
-			memset(mapped_mem, constant, byte_count);
-			vmaUnmapMemory(vmc.va, staging_vmaa);
-
-			vk::CommandBuffer& cb = command.get_one_time_transfer_buffer();
-
-			vk::BufferCopy copy_region;
-			copy_region.srcOffset = 0;
-			copy_region.dstOffset = 0;
-			copy_region.size = byte_count;
-			cb.copyBuffer(staging_buffer, buffer, copy_region);
-			command.submit_transfer(cb, true);
-
-			vmaDestroyBuffer(vmc.va, staging_buffer, staging_vmaa);
-		}
-		else
-		{
-			void* mapped_mem;
-			vmaMapMemory(vmc.va, vmaa, &mapped_mem);
-			memset(mapped_mem, constant, byte_count);
-			vmaUnmapMemory(vmc.va, vmaa);
-		}
-	}
-
-	void update_data_bytes(const void* data, std::size_t byte_count, std::size_t offset = 0)
-	{
-		VKTE_ASSERT(byte_count <= byte_size, "vkte: Data is larger than buffer!");
-		VKTE_ASSERT(offset + byte_count <= byte_size, "vkte: Trying to write outside of the buffer!");
-
-		if (device_local)
-		{
-			auto [staging_buffer, staging_vmaa] = create_buffer((vk::BufferUsageFlagBits::eTransferSrc), VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT, byte_count, true, QueueFamilyFlags::Transfer);
-			void* mapped_mem;
-			vmaMapMemory(vmc.va, staging_vmaa, &mapped_mem);
-			memcpy(mapped_mem, data, byte_count);
-			vmaUnmapMemory(vmc.va, staging_vmaa);
-
-			vk::CommandBuffer& cb = command.get_one_time_transfer_buffer();
-
-			vk::BufferCopy copy_region;
-			copy_region.srcOffset = 0;
-			copy_region.dstOffset = offset;
-			copy_region.size = byte_count;
-			cb.copyBuffer(staging_buffer, buffer, copy_region);
-			command.submit_transfer(cb, true);
-
-			vmaDestroyBuffer(vmc.va, staging_buffer, staging_vmaa);
-		}
-		else
-		{
-			void* mapped_mem;
-			vmaMapMemory(vmc.va, vmaa, &mapped_mem);
-			memcpy((uint8_t*)(mapped_mem) + offset, data, byte_count);
-			vmaUnmapMemory(vmc.va, vmaa);
-		}
-	}
+	Buffer(const VulkanMainContext& vmc, Command& command, const Settings& settings);
+	~Buffer();
+	Buffer(const Buffer&) = delete;
+	Buffer& operator=(const Buffer&) = delete;
+	Buffer(Buffer&&) = delete;
+	Buffer& operator=(Buffer&&) = delete;
+	const vk::Buffer& get() const { return buffer; }
+	uint64_t get_element_count() const { return element_count; }
+	uint64_t get_byte_size() const { return byte_size; }
+	void fill_bytes(int constant, std::size_t byte_count);
+	void update_data_bytes(const void* data, std::size_t byte_count, std::size_t offset = 0);
 
 	template<class T>
 	void update_data(const T* data, std::size_t elements, std::size_t offset = 0)
@@ -140,37 +59,7 @@ public:
 		update_data_bytes(&data, sizeof(T));
 	}
 
-	void obtain_data_bytes(void* data, std::size_t byte_count)
-	{
-		VKTE_ASSERT(byte_count <= byte_size, "vkte: Cannot get more bytes than size of buffer!");
-
-		if (device_local)
-		{
-			auto [staging_buffer, staging_vmaa] = create_buffer((vk::BufferUsageFlagBits::eTransferDst), VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT, byte_count, false, QueueFamilyFlags::Transfer);
-
-			vk::CommandBuffer& cb = command.get_one_time_transfer_buffer();
-			vk::BufferCopy copy_region;
-			copy_region.srcOffset = 0;
-			copy_region.dstOffset = 0;
-			copy_region.size = byte_count;
-			cb.copyBuffer(buffer, staging_buffer, copy_region);
-			command.submit_transfer(cb, true);
-
-			void* mapped_mem;
-			vmaMapMemory(vmc.va, staging_vmaa, &mapped_mem);
-			memcpy(data, mapped_mem, byte_count);
-			vmaUnmapMemory(vmc.va, staging_vmaa);
-
-			vmaDestroyBuffer(vmc.va, staging_buffer, staging_vmaa);
-		}
-		else
-		{
-			void* mapped_mem;
-			vmaMapMemory(vmc.va, vmaa, &mapped_mem);
-			memcpy(data, mapped_mem, byte_count);
-			vmaUnmapMemory(vmc.va, vmaa);
-		}
-	}
+	void obtain_data_bytes(void* data, std::size_t byte_count);
 
 	template<class T>
 	std::vector<T> obtain_data(std::size_t element_count)
@@ -203,47 +92,23 @@ public:
 		return data;
 	}
 
-	vk::DeviceAddress get_device_address()
-	{
-		vk::BufferDeviceAddressInfoKHR buffer_device_adress_i;
-		buffer_device_adress_i.buffer = buffer;
-		return vmc.logical_device.get().getBufferAddress(buffer_device_adress_i);
-	}
-
-	VmaAllocationInfo get_allocation_info() const
-	{
-		VmaAllocationInfo alloc_info;
-		vmaGetAllocationInfo(vmc.va, vmaa, &alloc_info);
-		return alloc_info;
-	}
+	vk::DeviceAddress get_device_address();
+	VmaAllocationInfo get_allocation_info() const;
 
 	void* pNext = nullptr;
 
 private:
-	std::pair<vk::Buffer, VmaAllocation> create_buffer(vk::BufferUsageFlags usage_flags, VmaAllocationCreateFlags vma_flags, std::size_t byte_size, bool device_local, Queues queues, vk::DeviceSize min_alignment = 0)
+	enum class TransferDirection
 	{
-		std::vector<uint32_t> queue_indices = vmc.queue_families.get(queues);
-		vk::BufferCreateInfo bci;
-		bci.size = byte_size;
-		bci.usage = usage_flags;
-		bci.sharingMode = queue_indices.size() == 1 ? vk::SharingMode::eExclusive : vk::SharingMode::eConcurrent;
-		bci.flags = {};
-		bci.queueFamilyIndexCount = queue_indices.size();
-		bci.pQueueFamilyIndices = queue_indices.data();
-		VmaAllocationCreateInfo vaci{};
-		vaci.usage = device_local ? VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE : VMA_MEMORY_USAGE_AUTO_PREFER_HOST;
-		vaci.flags = vma_flags;
-		vaci.minAlignment = min_alignment;
-		VkBuffer local_buffer;
-		VmaAllocation local_vmaa;
-		vmaCreateBuffer(vmc.va, (VkBufferCreateInfo*) (&bci), &vaci, (&local_buffer), &local_vmaa, nullptr);
+		HostToBuffer,
+		BufferToHost,
+	};
 
-		return std::make_pair(vk::Buffer(local_buffer), local_vmaa);
-	}
+	void apply_memory_operation(std::size_t offset, std::size_t byte_count, TransferDirection direction, const std::function<void(void*)>& host_op);
 
 	const VulkanMainContext& vmc;
 	Command& command;
-	bool device_local;
+	bool host_visible = false;
 	uint64_t byte_size;
 	uint64_t element_count;
 	vk::Buffer buffer;

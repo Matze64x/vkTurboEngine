@@ -17,8 +17,8 @@ public:
 	DescriptorSetsHandle add_descriptor_sets(DescriptorSetLayoutHandle layout, uint32_t set_count = 1);
 	void add_descriptor(DescriptorSetsHandle sets, uint32_t set, uint32_t binding, ResourceHandle resource);
 	void add_descriptor(DescriptorSetsHandle sets, uint32_t set, uint32_t binding, std::vector<ResourceHandle> resources);
-	PipelineHandle add_pipeline(const Pipeline::GraphicsSettings& settings, DescriptorSetLayoutHandle layout);
-	PipelineHandle add_pipeline(const Pipeline::ComputeSettings& settings, DescriptorSetLayoutHandle layout);
+	PipelineHandle add_pipeline(const Pipeline::GraphicsSettings& settings, DescriptorSetLayoutHandle layout = DescriptorSetLayoutHandle());
+	PipelineHandle add_pipeline(const Pipeline::ComputeSettings& settings, DescriptorSetLayoutHandle layout = DescriptorSetLayoutHandle());
 
 private:
 	friend class Engine;

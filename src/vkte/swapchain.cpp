@@ -56,7 +56,13 @@ void Swapchain::construct(const vk::Device& device, const QueueFamilies& queue_f
 	surface_format = settings.surface_format;
 	depth_format = settings.depth_format;
 	swapchain = create_swapchain(device, queue_families, settings);
-	depth_buffer = storage.add_image("depth_buffer", extent.width, extent.height, vk::ImageUsageFlagBits::eDepthStencilAttachment, depth_format, vk::SampleCountFlagBits::e1, false, 0, QueueFamilyFlags::Graphics);
+	Image::Settings depth_buffer_settings;
+	depth_buffer_settings.width = extent.width;
+	depth_buffer_settings.height = extent.height;
+	depth_buffer_settings.format = depth_format;
+	depth_buffer_settings.usage_flags = vk::ImageUsageFlagBits::eDepthStencilAttachment;
+	depth_buffer_settings.queues = QueueFamilyFlags::Graphics;
+	depth_buffer = storage.add_image("depth_buffer", depth_buffer_settings);
 	Image& depth_buffer_image = storage.get_image(depth_buffer);
 	depth_buffer_image.transition_image_layout(command, vk::ImageLayout::eDepthStencilAttachmentOptimal, vk::PipelineStageFlagBits2::eTopOfPipe, vk::PipelineStageFlagBits2::eEarlyFragmentTests | vk::PipelineStageFlagBits2::eLateFragmentTests, vk::AccessFlagBits2::eNone, vk::AccessFlagBits2::eDepthStencilAttachmentRead | vk::AccessFlagBits2::eDepthStencilAttachmentWrite);
 	depth_image = depth_buffer_image.get_image();

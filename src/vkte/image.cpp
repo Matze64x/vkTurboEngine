@@ -1,10 +1,22 @@
 #include "vkte/image.hpp"
 
 #include <cmath>
+#include <cstring>
+#include <format>
 #include "vkte/buffer.hpp"
+#include "vkte/command.hpp"
+#include "vkte/vkte_log.hpp"
+#include "vkte/vulkan_main_context.hpp"
 
 namespace vkte
 {
+static constexpr uint32_t bytes_per_pixel = 4;
+
+static vk::ImageCreateFlags get_image_create_flags(vk::ImageViewType view_type)
+{
+	return (view_type == vk::ImageViewType::eCube || view_type == vk::ImageViewType::eCubeArray) ? vk::ImageCreateFlags(vk::ImageCreateFlagBits::eCubeCompatible) : vk::ImageCreateFlags{};
+}
+
 bool has_stencil(vk::Format depth_format)
 {
 	return depth_format == vk::Format::eD24UnormS8Uint || depth_format == vk::Format::eD32SfloatS8Uint;
@@ -27,7 +39,7 @@ vk::ImageAspectFlags default_aspect_for_format(vk::Format format)
 	}
 }
 
-void perform_image_layout_transition(vk::CommandBuffer& cb, const ImageTransitionDesc& t)
+void perform_image_layout_transition(vk::CommandBuffer& cb, const ImageTransitionDescription& t)
 {
 	vk::ImageMemoryBarrier2 b;
 	b.srcStageMask = t.src_stage;
@@ -50,11 +62,11 @@ void perform_image_layout_transition(vk::CommandBuffer& cb, const ImageTransitio
 	cb.pipelineBarrier2(dep);
 }
 
-void perform_image_layout_transition(vk::CommandBuffer& cb, const std::vector<ImageTransitionDesc>& transitions)
+void perform_image_layout_transition(vk::CommandBuffer& cb, const std::vector<ImageTransitionDescription>& transitions)
 {
 	std::vector<vk::ImageMemoryBarrier2> barriers;
 	barriers.reserve(transitions.size());
-	for (const ImageTransitionDesc& t : transitions)
+	for (const ImageTransitionDescription& t : transitions)
 	{
 		vk::ImageMemoryBarrier2 b;
 		b.srcStageMask = t.src_stage;
@@ -79,26 +91,64 @@ void perform_image_layout_transition(vk::CommandBuffer& cb, const std::vector<Im
 	cb.pipelineBarrier2(dep);
 }
 
-Image::Image(const VulkanMainContext& vmc, Command& command, const unsigned char* data, uint32_t width, uint32_t height, bool use_mip_maps, uint32_t base_mip_map_lvl, Queues queues, vk::ImageUsageFlags usage_flags) : vmc(vmc), w(width), h(height), c(4), byte_size(width * height * 4), mip_levels(use_mip_maps ? std::floor(std::log2(std::max(w, h))) + 1 : 1), layer_count(1)
+Image::Image(const VulkanMainContext& vmc, Command& command, const Settings& settings) : vmc(vmc), format(settings.format), w(settings.width), h(settings.height), d(settings.depth), mip_levels(settings.use_mip_maps ? uint32_t(std::floor(std::log2(std::max({settings.width, settings.height, settings.depth})))) + 1 : 1), layer_count(settings.depth > 1 || settings.initial_data.empty() ? settings.layer_count : uint32_t(settings.initial_data.size()))
 {
-	create_image_from_data(data, command, queues, base_mip_map_lvl, usage_flags);
-}
+	VKTE_ASSERT(settings.width > 0 && settings.height > 0 && settings.depth > 0, "vkte: Image::Settings::width/height/depth must not be 0");
+	VKTE_ASSERT(settings.usage_flags, "vkte: Image::Settings::usage_flags must not be empty");
+	VKTE_ASSERT(settings.depth == 1 || settings.layer_count == 1, "vkte: Image::Settings::depth and layer_count are mutually exclusive -- a 3D image cannot also be an array");
+	VKTE_ASSERT(layer_count > 0, "vkte: Image::Settings::layer_count must not be 0 (and initial_data, if given, must not be empty)");
 
-Image::Image(const VulkanMainContext& vmc, Command& command, const std::vector<std::vector<unsigned char>>& data, uint32_t width, uint32_t height, bool use_mip_maps, uint32_t base_mip_map_lvl, Queues queues, vk::ImageUsageFlags usage_flags, vk::ImageViewType image_view_type) : vmc(vmc), w(width), h(height), c(4), byte_size(width * height * 4 * data.size()), mip_levels(use_mip_maps ? std::floor(std::log2(std::max(w, h))) + 1 : 1), layer_count(data.size())
-{
-	std::vector<unsigned char> copy_data;
-	for (const auto& i : data)
+	if (settings.depth > 1)
 	{
-		for (const auto& j : i) copy_data.push_back(j);
+		VKTE_ASSERT(settings.image_view_type == vk::ImageViewType::e3D, "vkte: Image::Settings::image_view_type must be e3D when depth > 1");
+		VKTE_ASSERT(settings.base_mip_map_lvl == 0, "vkte: Image::Settings::base_mip_map_lvl > 0 is not supported for a 3D image (depth > 1)");
+		VKTE_ASSERT(!settings.use_mip_maps || settings.initial_data.empty(), "vkte: Auto-generating mipmaps for an uploaded 3D image is not supported (mip generation is 2D-only); create it without use_mip_maps and populate the mips yourself if needed");
 	}
-	create_image_from_data(copy_data.data(), command, queues, base_mip_map_lvl, usage_flags, image_view_type);
+	else if (layer_count > 1)
+	{
+		const bool is_cube_view = settings.image_view_type == vk::ImageViewType::eCube || settings.image_view_type == vk::ImageViewType::eCubeArray;
+		VKTE_ASSERT(settings.image_view_type == vk::ImageViewType::e2DArray || is_cube_view, "vkte: Image::Settings::image_view_type must be e2DArray, eCube, or eCubeArray when layer_count > 1");
+		if (is_cube_view)
+		{
+			VKTE_ASSERT(layer_count % 6 == 0, "vkte: A cube/cube array Image needs layer_count to be a multiple of 6");
+			VKTE_ASSERT(settings.width == settings.height, "vkte: A cube/cube array Image needs width == height");
+		}
+	}
+
+	byte_size = vk::DeviceSize(w) * h * d * bytes_per_pixel * layer_count;
+
+	if (settings.initial_data.empty())
+	{
+		std::tie(image, vmaa) = create_image(settings.queues, settings.usage_flags, settings.sample_count, settings.use_mip_maps, format, vk::Extent3D(w, h, d), layer_count, get_image_create_flags(settings.image_view_type), settings.location);
+		layout = vk::ImageLayout::eUndefined;
+		if (settings.image_view_required) create_image_view(default_aspect_for_format(format), settings.image_view_type);
+	}
+	else
+	{
+		VKTE_ASSERT(settings.depth == 1 || settings.initial_data.size() == settings.depth, "vkte: Image::Settings::initial_data must have exactly `depth` entries (one per Z-slice) for a 3D image");
+
+		const std::size_t expected_entry_byte_size = std::size_t(w) * h * bytes_per_pixel;
+		for (const std::span<const std::byte>& entry_data : settings.initial_data)
+		{
+			VKTE_ASSERT(entry_data.size() == expected_entry_byte_size, std::format("vkte: Image::Settings::initial_data entry has {} bytes, expected width*height*4 = {}", entry_data.size(), expected_entry_byte_size));
+		}
+
+		std::vector<std::byte> concatenated_data(byte_size);
+		std::size_t offset = 0;
+		for (const std::span<const std::byte>& entry_data : settings.initial_data)
+		{
+			std::memcpy(concatenated_data.data() + offset, entry_data.data(), entry_data.size());
+			offset += entry_data.size();
+		}
+		create_image_from_data(concatenated_data.data(), command, settings.queues, settings.base_mip_map_lvl, settings.usage_flags, settings.image_view_type, settings.location);
+	}
 }
 
-Image::Image(const VulkanMainContext& vmc, const Command& command, uint32_t width, uint32_t height, vk::ImageUsageFlags usage, vk::Format format, vk::SampleCountFlagBits sample_count, bool use_mip_maps, uint32_t base_mip_map_lvl, Queues queues, bool image_view_required, uint32_t layer_count) : vmc(vmc), format(format), w(width), h(height), c(4), mip_levels(use_mip_maps ? std::floor(std::log2(std::max(w, h))) + 1 : 1), layer_count(layer_count)
+Image::~Image()
 {
-	std::tie(image, vmaa) = create_image(queues, usage, sample_count, use_mip_maps, format, vk::Extent3D(w, h, 1), layer_count, vmc.va, !image_view_required);
-	layout = vk::ImageLayout::eUndefined;
-	if(image_view_required) create_image_view(default_aspect_for_format(format));
+	vmc.logical_device.get().destroySampler(sampler);
+	vmc.logical_device.get().destroyImageView(view);
+	vmaDestroyImage(vmc.va, VkImage(image), vmaa);
 }
 
 void blit_image(vk::CommandBuffer& cb, vk::Image& src, uint32_t src_mip_map_lvl, vk::Offset3D src_offset, vk::Image& dst, uint32_t dst_mip_map_lvl, vk::Offset3D dst_offset, uint32_t layer_count)
@@ -129,45 +179,44 @@ void copy_image(vk::CommandBuffer& cb, vk::Image& src, vk::Image& dst, uint32_t 
 	ic.extent.width = width;
 	ic.extent.height = height;
 	ic.extent.depth = 1;
-
 	cb.copyImage(src, vk::ImageLayout::eTransferSrcOptimal, dst, vk::ImageLayout::eTransferDstOptimal, 1, &ic);
 }
 
-std::pair<vk::Image, VmaAllocation> Image::create_image(Queues queues, vk::ImageUsageFlags usage, vk::SampleCountFlagBits sample_count, bool use_mip_levels, vk::Format format, vk::Extent3D extent, uint32_t layer_count, const VmaAllocator& va, bool host_visible)
+std::pair<vk::Image, VmaAllocation> Image::create_image(Queues queues, vk::ImageUsageFlags usage, vk::SampleCountFlagBits sample_count, bool use_mip_levels, vk::Format format, vk::Extent3D extent, uint32_t layer_count, vk::ImageCreateFlags flags, MemoryLocation location)
 {
 	std::vector<uint32_t> queue_family_indices = vmc.queue_families.get(queues);
-	uint32_t mip_levels = use_mip_levels ? std::floor(std::log2(std::max(extent.width, extent.height))) + 1 : 1;
+	uint32_t mip_levels = use_mip_levels ? uint32_t(std::floor(std::log2(std::max({extent.width, extent.height, extent.depth})))) + 1 : 1;
 	if (mip_levels > 1) usage |= vk::ImageUsageFlagBits::eTransferSrc;
-	vk::ImageCreateInfo ici;
-	ici.imageType = vk::ImageType::e2D;
-	ici.extent = extent;
-	ici.extent.depth = 1;
-	ici.mipLevels = mip_levels;
-	ici.arrayLayers = layer_count;
-	ici.format = format;
-	ici.tiling = host_visible ? vk::ImageTiling::eLinear : vk::ImageTiling::eOptimal;
-	ici.initialLayout = vk::ImageLayout::eUndefined;
-	ici.usage = usage;
-	ici.sharingMode = queue_family_indices.size() == 1 ? vk::SharingMode::eExclusive : vk::SharingMode::eConcurrent;
-	ici.queueFamilyIndexCount = queue_family_indices.size();
-	ici.pQueueFamilyIndices = queue_family_indices.data();
-	ici.samples = sample_count;
-	ici.flags = {};
+	const vk::ImageType image_type = extent.depth > 1 ? vk::ImageType::e3D : vk::ImageType::e2D;
 
-	std::pair<vk::Image, VmaAllocation> image;
-	VmaAllocationCreateInfo vaci{};
-	if (host_visible)
-	{
-		vaci.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
-	}
-	else
-	{
-		vaci.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
-		vaci.requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-		vaci.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
-	}
-	vmaCreateImage(va, (VkImageCreateInfo*) (&ici), &vaci, (VkImage*) (&image.first), &image.second, nullptr);
-	return image;
+	auto try_create = [&](MemoryLocation candidate_location) -> std::optional<std::pair<vk::Image, VmaAllocation>> {
+		vk::ImageCreateInfo ici;
+		ici.imageType = image_type;
+		ici.extent = extent;
+		ici.mipLevels = mip_levels;
+		ici.arrayLayers = layer_count;
+		ici.format = format;
+		ici.tiling = candidate_location == MemoryLocation::HostVisible ? vk::ImageTiling::eLinear : vk::ImageTiling::eOptimal;
+		ici.initialLayout = vk::ImageLayout::eUndefined;
+		ici.usage = usage;
+		ici.sharingMode = queue_family_indices.size() == 1 ? vk::SharingMode::eExclusive : vk::SharingMode::eConcurrent;
+		ici.queueFamilyIndexCount = queue_family_indices.size();
+		ici.pQueueFamilyIndices = queue_family_indices.data();
+		ici.samples = sample_count;
+		ici.flags = flags;
+
+		const VmaAllocationCreateInfo vaci = to_vma_allocation_create_info(candidate_location);
+		std::pair<vk::Image, VmaAllocation> result;
+		if (vmaCreateImage(vmc.va, (VkImageCreateInfo*) (&ici), &vaci, (VkImage*) (&result.first), &result.second, nullptr) != VK_SUCCESS) return std::nullopt;
+		return result;
+	};
+
+	if (std::optional<std::pair<vk::Image, VmaAllocation>> result = try_create(location)) return *result;
+	const std::optional<MemoryLocation> fallback = get_fallback_location(location);
+	VKTE_ASSERT(fallback.has_value(), "vkte: Failed to allocate image in the requested MemoryLocation");
+	std::optional<std::pair<vk::Image, VmaAllocation>> fallback_result = try_create(*fallback);
+	VKTE_ASSERT(fallback_result.has_value(), "vkte: Failed to allocate image in its fallback MemoryLocation as well");
+	return *fallback_result;
 }
 
 void copy_buffer_to_image(Command& command, const Buffer& buffer, vk::Extent3D extent, vk::Image image, uint32_t layer_count, uint32_t pixel_byte_size)
@@ -193,9 +242,14 @@ void copy_buffer_to_image(Command& command, const Buffer& buffer, vk::Extent3D e
 	command.submit_transfer(cb, true);
 }
 
-void Image::create_image_from_data(const unsigned char* data, Command& command, Queues queues, uint32_t base_mip_map_lvl, vk::ImageUsageFlags usage_flags, vk::ImageViewType image_view_type)
+void Image::create_image_from_data(const std::byte* data, Command& command, Queues queues, uint32_t base_mip_map_lvl, vk::ImageUsageFlags usage_flags, vk::ImageViewType image_view_type, MemoryLocation location)
 {
-	Buffer buffer(vmc, command, data, byte_size, vk::BufferUsageFlagBits::eTransferSrc, false, QueueFamilyFlags::Transfer);
+	Buffer::Settings staging_settings;
+	staging_settings.initial_data = std::as_bytes(std::span(data, byte_size));
+	staging_settings.usage_flags = vk::BufferUsageFlagBits::eTransferSrc;
+	staging_settings.location = MemoryLocation::HostVisible;
+	staging_settings.queues = QueueFamilyFlags::Transfer;
+	Buffer buffer(vmc, command, staging_settings);
 
 	vk::FormatProperties format_properties = vmc.physical_device.get().getFormatProperties(format);
 	if (!(format_properties.optimalTilingFeatures & vk::FormatFeatureFlagBits::eSampledImageFilterLinear))
@@ -224,21 +278,23 @@ void Image::create_image_from_data(const unsigned char* data, Command& command, 
 			.dst_access = vk::AccessFlagBits2::eTransferWrite
 		});
 		command.submit_transfer(cb, true);
-		copy_buffer_to_image(command, buffer, vk::Extent3D(w, h, 1), image, layer_count, c);
+		copy_buffer_to_image(command, buffer, vk::Extent3D(w, h, d), image, layer_count, bytes_per_pixel);
 	};
+
+	const vk::ImageCreateFlags image_create_flags = get_image_create_flags(image_view_type);
 
 	// check if image should start at base_mip_map_lvl to save some storage
 	// create image with original resolution and copy to actual image with reduced resolution
 	if (base_mip_map_lvl > 0)
 	{
-		auto [tmp_image, tmp_alloc] = create_image(QueueFamilyFlags::Graphics | QueueFamilyFlags::Transfer, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eTransferSrc, vk::SampleCountFlagBits::e1, false, format, vk::Extent3D(w, h, 1), layer_count, vmc.va);
+		auto [tmp_image, tmp_alloc] = create_image(QueueFamilyFlags::Graphics | QueueFamilyFlags::Transfer, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eTransferSrc, vk::SampleCountFlagBits::e1, false, format, vk::Extent3D(w, h, d), layer_count);
 		move_buffer_to_image(tmp_image, 1);
 
 		vk::Offset3D tmp_image_offset(w, h, 1);
 		mip_levels -= base_mip_map_lvl;
-		w = std::max(1.0, w / (std::pow(2, base_mip_map_lvl)));
-		h = std::max(1.0, h / (std::pow(2, base_mip_map_lvl)));
-		byte_size = w * h * 4;
+		w = std::max(1u, uint32_t(w / std::pow(2, base_mip_map_lvl)));
+		h = std::max(1u, uint32_t(h / std::pow(2, base_mip_map_lvl)));
+		byte_size = vk::DeviceSize(w) * h * bytes_per_pixel * layer_count;
 
 		// create image with reduced resolution by blitting
 		vk::CommandBuffer& cb = command.get_one_time_graphics_buffer();
@@ -258,7 +314,7 @@ void Image::create_image_from_data(const unsigned char* data, Command& command, 
 			.dst_stage = vk::PipelineStageFlagBits2::eTransfer,
 			.dst_access = vk::AccessFlagBits2::eTransferRead
 		});
-		std::tie(image, vmaa) = create_image(queues, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eTransferSrc | usage_flags, vk::SampleCountFlagBits::e1, true, format, vk::Extent3D(w, h, 1), layer_count, vmc.va);
+		std::tie(image, vmaa) = create_image(queues, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eTransferSrc | usage_flags, vk::SampleCountFlagBits::e1, true, format, vk::Extent3D(w, h, d), layer_count, image_create_flags, location);
 		perform_image_layout_transition(cb, {
 			.image = image,
 			.range = {
@@ -275,7 +331,7 @@ void Image::create_image_from_data(const unsigned char* data, Command& command, 
 			.dst_stage = vk::PipelineStageFlagBits2::eTransfer,
 			.dst_access = vk::AccessFlagBits2::eTransferWrite
 		});
-		blit_image(cb, tmp_image, 0, tmp_image_offset, image, 0, {w, h, 1}, layer_count);
+		blit_image(cb, tmp_image, 0, tmp_image_offset, image, 0, {int32_t(w), int32_t(h), 1}, layer_count);
 		command.submit_graphics(cb, true);
 
 		vmaDestroyImage(vmc.va, VkImage(tmp_image), tmp_alloc);
@@ -283,10 +339,9 @@ void Image::create_image_from_data(const unsigned char* data, Command& command, 
 	else
 	{
 		// layout of image is transitioned in move_buffer_to_image
-		std::tie(image, vmaa) = create_image(queues, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eTransferSrc | usage_flags, vk::SampleCountFlagBits::e1, true, format, vk::Extent3D(w, h, 1), layer_count, vmc.va);
+		std::tie(image, vmaa) = create_image(queues, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eTransferSrc | usage_flags, vk::SampleCountFlagBits::e1, true, format, vk::Extent3D(w, h, d), layer_count, image_create_flags, location);
 		move_buffer_to_image(image, mip_levels);
 	}
-	buffer.destruct();
 	// set current layout of this image
 	layout = vk::ImageLayout::eTransferDstOptimal;
 	if (usage_flags & vk::ImageUsageFlagBits::eSampled)
@@ -301,7 +356,7 @@ void Image::create_image_view(vk::ImageAspectFlags aspects, vk::ImageViewType im
 {
 	vk::ImageViewCreateInfo ivci;
 	ivci.image = image;
-	ivci.viewType = layer_count > 1 ? vk::ImageViewType::e2DArray : image_view_type;
+	ivci.viewType = image_view_type;
 	ivci.format = format;
 	ivci.subresourceRange.aspectMask = aspects;
 	ivci.subresourceRange.baseMipLevel = 0;
@@ -338,13 +393,6 @@ void Image::create_sampler(vk::Filter filter, vk::SamplerAddressMode sampler_add
 	sci.minLod = 0.0f;
 	sci.maxLod = mip_levels;
 	sampler = vmc.logical_device.get().createSampler(sci);
-}
-
-void Image::destruct()
-{
-	vmc.logical_device.get().destroySampler(sampler);
-	vmc.logical_device.get().destroyImageView(view);
-	vmaDestroyImage(vmc.va, VkImage(image), vmaa);
 }
 
 void Image::transition_image_layout(Command& command, vk::ImageLayout new_layout, vk::PipelineStageFlags2 src_stage_flags, vk::PipelineStageFlags2 dst_stage_flags, vk::AccessFlags2 src_access_flags, vk::AccessFlags2 dst_access_flags)
@@ -417,7 +465,7 @@ void Image::generate_mipmaps(Command& command)
 {
 	vk::CommandBuffer& cb = command.get_one_time_graphics_buffer();
 
-	ImageSubresourceRangeDesc range{
+	ImageSubresourceRangeDescription range{
 		.aspect = vk::ImageAspectFlagBits::eColor,
 		.base_mip_level = 0,
 		.level_count = 1,

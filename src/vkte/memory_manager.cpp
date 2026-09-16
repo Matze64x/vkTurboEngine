@@ -4,6 +4,7 @@
 #include <array>
 #include "vkte/global_constants.hpp"
 #include "vkte/vkte_log.hpp"
+#include "vkte/vulkan_main_context.hpp"
 
 namespace vkte
 {
@@ -84,11 +85,22 @@ void MemoryManager::construct()
 	for (uint32_t i = 0; i < frames_in_flight; i++)
 	{
 		bindless_sets[i] = allocated_sets[i];
-		address_tables[i] = storage.add_buffer(std::format("bindless address table {} (vkte internal)", i), uint64_t(max_bindless_buffers) * sizeof(uint64_t), vk::BufferUsageFlagBits::eStorageBuffer, false, QueueFamilyFlags::Graphics | QueueFamilyFlags::Compute | QueueFamilyFlags::Transfer);
-		storage.get_buffer(address_tables[i]).update_data_bytes(0, uint64_t(max_bindless_buffers) * sizeof(uint64_t));
 
-		texture_validity_tables[i] = storage.add_buffer(std::format("bindless texture validity table {} (vkte internal)", i), uint64_t(bindless_texture_capacity) * sizeof(uint32_t), vk::BufferUsageFlagBits::eStorageBuffer, false, QueueFamilyFlags::Graphics | QueueFamilyFlags::Compute | QueueFamilyFlags::Transfer);
-		storage.get_buffer(texture_validity_tables[i]).update_data_bytes(0, uint64_t(bindless_texture_capacity) * sizeof(uint32_t));
+		Buffer::Settings address_table_settings;
+		address_table_settings.byte_size = uint64_t(max_bindless_buffers) * sizeof(uint64_t);
+		address_table_settings.usage_flags = vk::BufferUsageFlagBits::eStorageBuffer;
+		address_table_settings.location = MemoryLocation::BARFallbackHostVisible;
+		address_table_settings.queues = QueueFamilyFlags::Graphics | QueueFamilyFlags::Compute | QueueFamilyFlags::Transfer;
+		address_tables[i] = storage.add_buffer(std::format("bindless address table {} (vkte internal)", i), address_table_settings);
+		storage.get_buffer(address_tables[i]).fill_bytes(0, address_table_settings.byte_size);
+
+		Buffer::Settings texture_validity_table_settings;
+		texture_validity_table_settings.byte_size = uint64_t(bindless_texture_capacity) * sizeof(uint32_t);
+		texture_validity_table_settings.usage_flags = vk::BufferUsageFlagBits::eStorageBuffer;
+		texture_validity_table_settings.location = MemoryLocation::BARFallbackHostVisible;
+		texture_validity_table_settings.queues = QueueFamilyFlags::Graphics | QueueFamilyFlags::Compute | QueueFamilyFlags::Transfer;
+		texture_validity_tables[i] = storage.add_buffer(std::format("bindless texture validity table {} (vkte internal)", i), texture_validity_table_settings);
+		storage.get_buffer(texture_validity_tables[i]).fill_bytes(0, texture_validity_table_settings.byte_size);
 
 		vk::DescriptorBufferInfo address_table_dbi(storage.get_buffer(address_tables[i]).get(), 0, VK_WHOLE_SIZE);
 		vk::DescriptorBufferInfo texture_valid_dbi(storage.get_buffer(texture_validity_tables[i]).get(), 0, VK_WHOLE_SIZE);

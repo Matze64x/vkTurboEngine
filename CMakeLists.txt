@@ -11,6 +11,7 @@ set(SLANG_DIR "${PROJECT_SOURCE_DIR}/dependencies/slang")
 set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
 
 set(SOURCE_FILES
+	src/vkte/buffer.cpp
 	src/vkte/command_pool.cpp
 	src/vkte/device_feature_chain.cpp
 	src/vkte/device_timer.cpp
