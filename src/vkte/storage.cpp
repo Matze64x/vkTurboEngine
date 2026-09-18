@@ -55,37 +55,6 @@ ResourceHandle Storage::add_image(const std::string& name, const Image::Settings
 	return ResourceHandle(idx, images.at(idx)->generation, true);
 }
 
-std::string Storage::get_memory_info()
-{
-	std::string info_string = "";
-	vk::PhysicalDeviceMemoryProperties memory_properties = vmc.physical_device.get().getMemoryProperties();
-	info_string.append(std::format("Memory Heaps: {}\n", memory_properties.memoryHeapCount));
-	for (uint32_t i = 0; i < memory_properties.memoryHeapCount; i++) {
-		info_string.append(std::format("Heap {}: {} MB", i, (memory_properties.memoryHeaps[i].size / (1024 * 1024))));
-		if (memory_properties.memoryHeaps[i].flags & vk::MemoryHeapFlagBits::eDeviceLocal) {
-			info_string.append(" (Device Local - VRAM)");
-		}
-		info_string.append("\n");
-	}
-
-	info_string.append(std::format("Memory Types: {}\n", memory_properties.memoryTypeCount));
-	for (uint32_t i = 0; i < memory_properties.memoryTypeCount; i++) {
-		info_string.append(std::format("Type {}: Heap {} | ", i, memory_properties.memoryTypes[i].heapIndex));
-		if (memory_properties.memoryTypes[i].propertyFlags & vk::MemoryPropertyFlagBits::eDeviceLocal)
-			info_string.append("DEVICE_LOCAL ");
-		if (memory_properties.memoryTypes[i].propertyFlags & vk::MemoryPropertyFlagBits::eHostVisible)
-			info_string.append("HOST_VISIBLE ");
-		if (memory_properties.memoryTypes[i].propertyFlags & vk::MemoryPropertyFlagBits::eHostCoherent)
-			info_string.append("HOST_COHERENT ");
-		if (memory_properties.memoryTypes[i].propertyFlags & vk::MemoryPropertyFlagBits::eHostCached)
-			info_string.append("HOST_CACHED ");
-		if (memory_properties.memoryTypes[i].propertyFlags & vk::MemoryPropertyFlagBits::eLazilyAllocated)
-			info_string.append("LAZILY_ALLOCATED ");
-		info_string.append("\n");
-	}
-	return info_string;
-}
-
 void Storage::destroy(const ResourceHandle& handle)
 {
 	if (handle.is_image)

@@ -11,8 +11,41 @@ namespace vkte
 MemoryManager::MemoryManager(const VulkanMainContext& vmc, Storage& storage) : vmc(vmc), storage(storage)
 {}
 
+static std::string get_memory_info(const vk::PhysicalDevice& physical_device)
+{
+	std::string info_string = "";
+	vk::PhysicalDeviceMemoryProperties memory_properties = physical_device.getMemoryProperties();
+	info_string.append(std::format("Memory Heaps: {}\n", memory_properties.memoryHeapCount));
+	for (uint32_t i = 0; i < memory_properties.memoryHeapCount; i++) {
+		info_string.append(std::format("Heap {}: {} MB", i, (memory_properties.memoryHeaps[i].size / (1024 * 1024))));
+		if (memory_properties.memoryHeaps[i].flags & vk::MemoryHeapFlagBits::eDeviceLocal) {
+			info_string.append(" (Device Local - VRAM)");
+		}
+		info_string.append("\n");
+	}
+
+	info_string.append(std::format("Memory Types: {}\n", memory_properties.memoryTypeCount));
+	for (uint32_t i = 0; i < memory_properties.memoryTypeCount; i++) {
+		info_string.append(std::format("Type {}: Heap {} | ", i, memory_properties.memoryTypes[i].heapIndex));
+		if (memory_properties.memoryTypes[i].propertyFlags & vk::MemoryPropertyFlagBits::eDeviceLocal)
+			info_string.append("DEVICE_LOCAL ");
+		if (memory_properties.memoryTypes[i].propertyFlags & vk::MemoryPropertyFlagBits::eHostVisible)
+			info_string.append("HOST_VISIBLE ");
+		if (memory_properties.memoryTypes[i].propertyFlags & vk::MemoryPropertyFlagBits::eHostCoherent)
+			info_string.append("HOST_COHERENT ");
+		if (memory_properties.memoryTypes[i].propertyFlags & vk::MemoryPropertyFlagBits::eHostCached)
+			info_string.append("HOST_CACHED ");
+		if (memory_properties.memoryTypes[i].propertyFlags & vk::MemoryPropertyFlagBits::eLazilyAllocated)
+			info_string.append("LAZILY_ALLOCATED ");
+		info_string.append("\n");
+	}
+	return info_string;
+}
+
 void MemoryManager::construct()
 {
+	VKTE_DEBUG("vkte: {}", get_memory_info(vmc.physical_device.get()));
+
 	vk::PhysicalDeviceVulkan12Properties vulkan_12_properties;
 	vk::PhysicalDeviceProperties2 properties2;
 	properties2.pNext = &vulkan_12_properties;

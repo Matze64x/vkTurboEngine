@@ -13,8 +13,6 @@ class Engine;
 class Storage
 {
 public:
-	std::string get_memory_info();
-
 	ResourceHandle add_buffer(const std::string& name, const Buffer::Settings& settings);
 	ResourceHandle add_image(const std::string& name, const Image::Settings& settings);
 
