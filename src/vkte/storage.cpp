@@ -11,60 +11,48 @@ Storage::Storage(const VulkanMainContext& vmc, Command& command) : vmc(vmc), com
 
 ResourceHandle Storage::add_buffer(const std::string& name, const Buffer::Settings& settings)
 {
-	if (buffer_names.contains(name))
+	uint32_t idx;
+	if (!free_buffer_slots.empty())
 	{
-		if (buffers.at(buffer_names.at(name))->buffer.has_value())
-		{
-			// buffer name is already taken by an existing buffer
-			VKTE_WARN("vkte: Duplicate buffer name: {}", name);
-		}
-		else
-		{
-			// buffer name exists but the corresponding buffer got deleted; so, reuse the name
-			buffers.at(buffer_names.at(name))->name = name;
-			buffers.at(buffer_names.at(name))->buffer.emplace(vmc, command, settings);
-		}
+		idx = free_buffer_slots.back();
+		free_buffer_slots.pop_back();
+		buffers.at(idx)->name = name;
+		buffers.at(idx)->buffer.emplace(vmc, command, settings);
 	}
 	else
 	{
 		buffers.push_back(std::make_unique<BufferElement>(name, vmc, command, settings));
-		buffer_names.emplace(name, uint32_t(buffers.size() - 1));
+		idx = uint32_t(buffers.size() - 1);
 	}
-	const vk::Buffer& b = buffers.at(buffer_names.at(name))->buffer.value().get();
+	const vk::Buffer& b = buffers.at(idx)->buffer.value().get();
 	vk::DebugUtilsObjectNameInfoEXT duoni(b.objectType, uint64_t(static_cast<vk::Buffer::CType>(b)), name.c_str());
 	vmc.logical_device.get().setDebugUtilsObjectNameEXT(duoni);
-	VmaAllocationInfo alloc_info = buffers.at(buffer_names.at(name))->buffer.value().get_allocation_info();
+	VmaAllocationInfo alloc_info = buffers.at(idx)->buffer.value().get_allocation_info();
 	VKTE_DEBUG("vkte: Creating buffer \"{}\", Size: {}, Type: {}", name, alloc_info.size, alloc_info.memoryType);
-	return ResourceHandle(buffer_names.at(name), name, false);
+	return ResourceHandle(idx, buffers.at(idx)->generation, false);
 }
 
 ResourceHandle Storage::add_image(const std::string& name, const Image::Settings& settings)
 {
-	if (image_names.contains(name))
+	uint32_t idx;
+	if (!free_image_slots.empty())
 	{
-		if (images.at(image_names.at(name))->image.has_value())
-		{
-			// image name is already taken by an existing image
-			VKTE_WARN("vkte: Duplicate image name: {}", name);
-		}
-		else
-		{
-			// image name exists but the corresponding image got deleted; so, reuse the name
-			images.at(image_names.at(name))->name = name;
-			images.at(image_names.at(name))->image.emplace(vmc, command, settings);
-		}
+		idx = free_image_slots.back();
+		free_image_slots.pop_back();
+		images.at(idx)->name = name;
+		images.at(idx)->image.emplace(vmc, command, settings);
 	}
 	else
 	{
 		images.push_back(std::make_unique<ImageElement>(name, vmc, command, settings));
-		image_names.emplace(name, uint32_t(images.size() - 1));
+		idx = uint32_t(images.size() - 1);
 	}
-	const vk::Image& i = images.at(image_names.at(name))->image.value().get_image();
+	const vk::Image& i = images.at(idx)->image.value().get_image();
 	vk::DebugUtilsObjectNameInfoEXT duoni(i.objectType, uint64_t(static_cast<vk::Image::CType>(i)), name.c_str());
 	vmc.logical_device.get().setDebugUtilsObjectNameEXT(duoni);
-	VmaAllocationInfo alloc_info = images.at(image_names.at(name))->image.value().get_allocation_info();
+	VmaAllocationInfo alloc_info = images.at(idx)->image.value().get_allocation_info();
 	VKTE_DEBUG("vkte: Creating image \"{}\", Size: {}, Type: {}", name, alloc_info.size, alloc_info.memoryType);
-	return ResourceHandle(image_names.at(name), name, true);
+	return ResourceHandle(idx, images.at(idx)->generation, true);
 }
 
 std::string Storage::get_memory_info()
@@ -102,12 +90,15 @@ void Storage::destroy(const ResourceHandle& handle)
 {
 	if (handle.is_image)
 	{
-		const uint32_t idx = handle.id != ResourceHandle::invalid_id ? handle.id : get_image_index(handle.name);
-		if (images.at(idx)->image.has_value())
+		ImageElement& element = *images.at(handle.id);
+		VKTE_ASSERT(handle.generation == element.generation, std::format("vkte: Trying to destroy image \"{}\" through a stale handle!", element.name));
+		if (element.image.has_value())
 		{
-			VmaAllocationInfo alloc_info = images.at(idx)->image.value().get_allocation_info();
-			VKTE_DEBUG("vkte: Destroying image \"{}\", Size: {}, Type: {}", images.at(idx)->name, alloc_info.size, alloc_info.memoryType);
-			images.at(idx)->image.reset();
+			VmaAllocationInfo alloc_info = element.image.value().get_allocation_info();
+			VKTE_DEBUG("vkte: Destroying image \"{}\", Size: {}, Type: {}", element.name, alloc_info.size, alloc_info.memoryType);
+			element.image.reset();
+			element.generation++;
+			free_image_slots.push_back(handle.id);
 		}
 		else
 		{
@@ -116,12 +107,15 @@ void Storage::destroy(const ResourceHandle& handle)
 	}
 	else
 	{
-		const uint32_t idx = handle.id != ResourceHandle::invalid_id ? handle.id : get_buffer_index(handle.name);
-		if (buffers.at(idx)->buffer.has_value())
+		BufferElement& element = *buffers.at(handle.id);
+		VKTE_ASSERT(handle.generation == element.generation, std::format("vkte: Trying to destroy buffer \"{}\" through a stale handle!", element.name));
+		if (element.buffer.has_value())
 		{
-			VmaAllocationInfo alloc_info = buffers.at(idx)->buffer.value().get_allocation_info();
-			VKTE_DEBUG("vkte: Destroying buffer \"{}\", Size: {}, Type: {}", buffers.at(idx)->name, alloc_info.size, alloc_info.memoryType);
-			buffers.at(idx)->buffer.reset();
+			VmaAllocationInfo alloc_info = element.buffer.value().get_allocation_info();
+			VKTE_DEBUG("vkte: Destroying buffer \"{}\", Size: {}, Type: {}", element.name, alloc_info.size, alloc_info.memoryType);
+			element.buffer.reset();
+			element.generation++;
+			free_buffer_slots.push_back(handle.id);
 		}
 		else
 		{
@@ -132,53 +126,33 @@ void Storage::destroy(const ResourceHandle& handle)
 
 void Storage::clear()
 {
-	for (const std::pair<std::string, uint32_t>& buffer : buffer_names)
+	for (const std::unique_ptr<BufferElement>& buffer : buffers)
 	{
-		if (buffers[buffer.second]->buffer.has_value()) VKTE_WARN("vkte: Buffer \"{}\" not destroyed! Cleaning up...", buffer.first);
+		if (buffer->buffer.has_value()) VKTE_WARN("vkte: Buffer \"{}\" not destroyed! Cleaning up...", buffer->name);
 	}
 	buffers.clear();
-	buffer_names.clear();
-	for (const std::pair<std::string, uint32_t>& image : image_names)
+	free_buffer_slots.clear();
+	for (const std::unique_ptr<ImageElement>& image : images)
 	{
-		if (images[image.second]->image.has_value()) VKTE_WARN("vkte: Image \"{}\" not destroyed! Cleaning up...", image.first);
+		if (image->image.has_value()) VKTE_WARN("vkte: Image \"{}\" not destroyed! Cleaning up...", image->name);
 	}
 	images.clear();
-	image_names.clear();
+	free_image_slots.clear();
 }
 
 Buffer& Storage::get_buffer(const ResourceHandle& handle)
 {
-	const uint32_t idx = handle.id != ResourceHandle::invalid_id ? handle.id : get_buffer_index(handle.name);
-	if (!buffers.at(idx)->buffer.has_value()) VKTE_THROW("vkte: Trying to get already destroyed buffer!");
-	return buffers.at(idx)->buffer.value();
+	BufferElement& element = *buffers.at(handle.id);
+	if (handle.generation != element.generation) VKTE_THROW(std::format("vkte: Trying to get buffer \"{}\" through a stale handle!", element.name));
+	if (!element.buffer.has_value()) VKTE_THROW("vkte: Trying to get already destroyed buffer!");
+	return element.buffer.value();
 }
 
 Image& Storage::get_image(const ResourceHandle& handle)
 {
-	const uint32_t idx = handle.id != ResourceHandle::invalid_id ? handle.id : get_image_index(handle.name);
-	if (!images.at(idx)->image.has_value()) VKTE_THROW("vkte: Trying to get already destroyed image!");
-	return images.at(idx)->image.value();
-}
-
-Buffer& Storage::get_buffer_by_name(const std::string& name)
-{
-	return get_buffer(ResourceHandle(name, false));
-}
-
-Image& Storage::get_image_by_name(const std::string& name)
-{
-	return get_image(ResourceHandle(name, true));
-}
-
-uint32_t Storage::get_buffer_index(const std::string& name) const
-{
-	if (!buffer_names.contains(name)) VKTE_THROW("vkte: Failed to find buffer with name: " + name);
-	return buffer_names.at(name);
-}
-
-uint32_t Storage::get_image_index(const std::string& name) const
-{
-	if (!image_names.contains(name)) VKTE_THROW("vkte: Failed to find image with name: " + name);
-	return image_names.at(name);
+	ImageElement& element = *images.at(handle.id);
+	if (handle.generation != element.generation) VKTE_THROW(std::format("vkte: Trying to get image \"{}\" through a stale handle!", element.name));
+	if (!element.image.has_value()) VKTE_THROW("vkte: Trying to get already destroyed image!");
+	return element.image.value();
 }
 } // namespace vkte

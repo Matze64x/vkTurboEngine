@@ -1,8 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <string>
-#include <utility>
 
 namespace vkte
 {
@@ -11,6 +9,7 @@ struct HandleBase
 	using Type = uint32_t;
 	static constexpr Type invalid_id = ~0u;
 	Type id = invalid_id;
+	Type generation = 0;
 	bool valid() const { return id != invalid_id; }
 };
 
@@ -30,14 +29,9 @@ struct ImageHandle : HandleBase {};
 // Storage Handle
 struct ResourceHandle : HandleBase
 {
-	// ID takes precedence over name if both are set.
-	std::string name;
 	bool is_image = false;
 
 	ResourceHandle() = default;
-	ResourceHandle(std::string name, bool is_image) : name(std::move(name)), is_image(is_image) {}
-	ResourceHandle(uint32_t id, std::string name, bool is_image) : HandleBase{id}, name(std::move(name)), is_image(is_image) {}
-
-	bool valid() const { return id != invalid_id || !name.empty(); }
+	ResourceHandle(uint32_t id, uint32_t generation, bool is_image) : HandleBase{id, generation}, is_image(is_image) {}
 };
 } // namespace vkte

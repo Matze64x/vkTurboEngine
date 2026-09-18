@@ -107,7 +107,7 @@ void Engine::construct_components(const FrameSettings& settings)
 	for (uint32_t i = 0; i < components.size(); i++)
 	{
 		declarations.declaring_component = i;
-		components[i]->declare_resources(declarations, storage, frame_settings);
+		components[i]->declare_resources(declarations, memory_manager, frame_settings);
 	}
 	declarations.declaring_component = ~0u;
 	build_descriptor_set_layouts();
@@ -379,7 +379,7 @@ DeviceTimer& Engine::get(DeviceTimerHandle handle) const
 
 AccelerationStructureBuilderHandle Engine::add_acceleration_structure_builder()
 {
-	acceleration_structure_builders.push_back(std::unique_ptr<AccelerationStructureBuilder>(new AccelerationStructureBuilder(vmc, storage)));
+	acceleration_structure_builders.push_back(std::unique_ptr<AccelerationStructureBuilder>(new AccelerationStructureBuilder(vmc, memory_manager)));
 	return AccelerationStructureBuilderHandle{uint32_t(acceleration_structure_builders.size() - 1)};
 }
 
@@ -424,7 +424,7 @@ void Engine::destruct_components()
 	for (const vk::DescriptorSetLayout& layout : descriptor_set_layouts) vmc.logical_device.get().destroyDescriptorSetLayout(layout);
 	descriptor_set_layouts.clear();
 	declarations.layouts.clear();
-	for (Component* component : components) component->destruct(storage);
+	for (Component* component : components) component->destruct(memory_manager);
 }
 
 void Engine::set_debug_name(vk::ObjectType type, uint64_t handle, const std::string& name) const

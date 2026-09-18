@@ -1,8 +1,8 @@
 #pragma once
 
 #include "vkte/vulkan_main_context.hpp"
+#include "vkte/memory_manager.hpp"
 #include "vkte/resource_handles.hpp"
-#include "vkte/storage.hpp"
 #include <set>
 
 namespace vkte
@@ -16,8 +16,8 @@ public:
 	void clean_up_scratch_buffers(bool keep_dynamic = true);
 	struct BLASData
 	{
-		ResourceHandle vertex_buffer_id;
-		ResourceHandle index_buffer_id;
+		BufferHandle vertex_buffer_id;
+		BufferHandle index_buffer_id;
 		vk::DeviceSize vertex_stride;
 		std::vector<uint32_t> index_offsets = {0};
 		std::vector<uint32_t> index_counts = {};
@@ -29,6 +29,7 @@ public:
 	void update_instance(uint32_t instance_idx, const vk::TransformMatrixKHR& M);
 	void construct(vk::CommandBuffer& cb, QueueFamilyFlags build_queue, const std::string& buffer_name);
 	void update_tlas(vk::CommandBuffer& cb, QueueFamilyFlags build_queue);
+	BufferHandle get_tlas_buffer_handle() const { return top_level_as.buffer; }
 
 private:
 	struct BLAS {
@@ -51,7 +52,7 @@ private:
 		vk::AccelerationStructureCreateInfoKHR asci;
 		vk::AccelerationStructureBuildRangeInfoKHR asbri;
 		vk::AccelerationStructureKHR handle;
-		ResourceHandle buffer;
+		BufferHandle buffer;
 		ResourceHandle scratch_buffer;
 	};
 
@@ -63,10 +64,10 @@ private:
 	ScratchBuffer create_scratch_buffer(const std::string& buffer_name, vk::DeviceSize build_scratch_size);
 
 	friend class Engine;
-	AccelerationStructureBuilder(const VulkanMainContext& vmc, Storage& storage);
+	AccelerationStructureBuilder(const VulkanMainContext& vmc, MemoryManager& memory_manager);
 
 	const VulkanMainContext& vmc;
-	Storage& storage;
+	MemoryManager& memory_manager;
 	uint32_t scratch_offset_alignment = 0;
 	vk::WriteDescriptorSetAccelerationStructureKHR wdsas;
 	std::vector<BLAS> bottom_level_as;

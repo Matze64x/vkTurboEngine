@@ -1,7 +1,6 @@
 #pragma once
 
 #include <memory>
-#include <unordered_map>
 #include <vector>
 #include "vkte/buffer.hpp"
 #include "vkte/image.hpp"
@@ -24,10 +23,6 @@ public:
 	void clear();
 	Buffer& get_buffer(const ResourceHandle& handle);
 	Image& get_image(const ResourceHandle& handle);
-	Buffer& get_buffer_by_name(const std::string& name);
-	Image& get_image_by_name(const std::string& name);
-	uint32_t get_buffer_index(const std::string& name) const;
-	uint32_t get_image_index(const std::string& name) const;
 
 private:
 	friend class Engine;
@@ -41,17 +36,19 @@ private:
 		BufferElement(const std::string& name, const VulkanMainContext& vmc, Command& command, const Buffer::Settings& settings) : name(name), buffer(std::in_place, vmc, command, settings) {}
 		std::string name;
 		std::optional<Buffer> buffer;
+		uint32_t generation = 0;
 	};
 	std::vector<std::unique_ptr<BufferElement>> buffers;
-	std::unordered_map<std::string, uint32_t> buffer_names;
+	std::vector<uint32_t> free_buffer_slots;
 
 	struct ImageElement
 	{
 		ImageElement(const std::string& name, const VulkanMainContext& vmc, Command& command, const Image::Settings& settings) : name(name), image(std::in_place, vmc, command, settings) {}
 		std::string name;
 		std::optional<Image> image;
+		uint32_t generation = 0;
 	};
 	std::vector<std::unique_ptr<ImageElement>> images;
-	std::unordered_map<std::string, uint32_t> image_names;
+	std::vector<uint32_t> free_image_slots;
 };
 } // namespace vkte

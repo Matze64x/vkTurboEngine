@@ -2,21 +2,24 @@ module vkte;
 
 namespace vkte
 {
-	[[vk::binding(0, 0)]] StructuredBuffer<uint64_t> gStorageAddressTable;
-	[[vk::binding(1, 0)]] StructuredBuffer<uint32_t> gStorageTextureValid;
-	[[vk::binding(2, 0)]] Sampler2D gStorageTextures[];
+	[[vk::binding(0, 0)]] StructuredBuffer<uint32_t> gStorageBufferGeneration;
+	[[vk::binding(1, 0)]] StructuredBuffer<uint64_t> gStorageAddressTable;
+	[[vk::binding(2, 0)]] StructuredBuffer<uint32_t> gStorageImageGeneration;
+	[[vk::binding(3, 0)]] Sampler2D gStorageTextures[];
 
 	static const uint kInvalidHandleId = 0xFFFFFFFFu;
 
 	public struct BufferHandle
 	{
 		uint id = kInvalidHandleId;
-		public bool valid() { return id != kInvalidHandleId && gStorageAddressTable[id] != 0; }
+		uint generation = kInvalidHandleId;
+		public bool valid() { return id != kInvalidHandleId && gStorageBufferGeneration[id] == generation; }
 	}
 	public struct ImageHandle
 	{
 		uint id = kInvalidHandleId;
-		public bool valid() { return id != kInvalidHandleId && gStorageTextureValid[id] != 0; }
+		uint generation = kInvalidHandleId;
+		public bool valid() { return id != kInvalidHandleId && gStorageImageGeneration[id] == generation; }
 	}
 
 	public struct Buffer<T>

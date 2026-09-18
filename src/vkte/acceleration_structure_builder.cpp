@@ -4,7 +4,7 @@
 
 namespace vkte
 {
-AccelerationStructureBuilder::AccelerationStructureBuilder(const VulkanMainContext& vmc, Storage& storage) : vmc(vmc), storage(storage) {}
+AccelerationStructureBuilder::AccelerationStructureBuilder(const VulkanMainContext& vmc, MemoryManager& memory_manager) : vmc(vmc), memory_manager(memory_manager) {}
 
 AccelerationStructureBuilder::ScratchBuffer AccelerationStructureBuilder::create_scratch_buffer(const std::string& buffer_name, vk::DeviceSize build_scratch_size)
 {
@@ -23,20 +23,20 @@ AccelerationStructureBuilder::ScratchBuffer AccelerationStructureBuilder::create
 	scratch_settings.location = MemoryLocation::DeviceLocal;
 	scratch_settings.queues = QueueFamilyFlags::Compute | QueueFamilyFlags::Graphics | QueueFamilyFlags::Transfer;
 	scratch_settings.min_alignment = scratch_offset_alignment;
-	const ResourceHandle buffer_handle = storage.add_buffer(buffer_name + " scratch (vkte internal)", scratch_settings);
-	return ScratchBuffer{buffer_handle, storage.get_buffer(buffer_handle).get_device_address()};
+	const ResourceHandle buffer_handle = memory_manager.get_storage().add_buffer(buffer_name + " scratch (vkte internal)", scratch_settings);
+	return ScratchBuffer{buffer_handle, memory_manager.get_storage().get_buffer(buffer_handle).get_device_address()};
 }
 
 void AccelerationStructureBuilder::destruct()
 {
 	vmc.logical_device.get().destroyAccelerationStructureKHR(top_level_as.handle);
 	clean_up_scratch_buffers(false);
-	if (top_level_as.buffer.valid()) storage.destroy(top_level_as.buffer);
+	if (top_level_as.buffer.valid()) memory_manager.destroy(top_level_as.buffer);
 
 	for (BLAS& blas : bottom_level_as)
 	{
 		vmc.logical_device.get().destroyAccelerationStructureKHR(blas.handle);
-		if (top_level_as.buffer.valid()) storage.destroy(blas.buffer);
+		if (top_level_as.buffer.valid()) memory_manager.get_storage().destroy(blas.buffer);
 	}
 	bottom_level_as.clear();
 	instances.clear();
@@ -48,18 +48,18 @@ void AccelerationStructureBuilder::clean_up_scratch_buffers(bool keep_dynamic)
 	{
 		if (blas.scratch_buffer.valid() && (!keep_dynamic || !blas.dynamic))
 		{
-			storage.destroy(blas.scratch_buffer);
+			memory_manager.get_storage().destroy(blas.scratch_buffer);
 			blas.scratch_buffer = ResourceHandle();
 		}
 	}
-	if (top_level_as.scratch_buffer.valid() && !keep_dynamic) storage.destroy(top_level_as.scratch_buffer);
-	if (instances_buffer.valid() && !keep_dynamic) storage.destroy(instances_buffer);
+	if (top_level_as.scratch_buffer.valid() && !keep_dynamic) memory_manager.get_storage().destroy(top_level_as.scratch_buffer);
+	if (instances_buffer.valid() && !keep_dynamic) memory_manager.get_storage().destroy(instances_buffer);
 }
 
 uint32_t AccelerationStructureBuilder::add_blas(const std::string& buffer_name, const BLASData& blas_data)
 {
-	Buffer& vertex_buffer = storage.get_buffer(blas_data.vertex_buffer_id);
-	Buffer& index_buffer = storage.get_buffer(blas_data.index_buffer_id);
+	Buffer& vertex_buffer = memory_manager.get_buffer(blas_data.vertex_buffer_id);
+	Buffer& index_buffer = memory_manager.get_buffer(blas_data.index_buffer_id);
 
 	vk::DeviceOrHostAddressConstKHR vertex_buffer_device_adress(vertex_buffer.get_device_address());
 	vk::DeviceOrHostAddressConstKHR index_buffer_device_adress(index_buffer.get_device_address());
@@ -104,9 +104,9 @@ uint32_t AccelerationStructureBuilder::add_blas(const std::string& buffer_name, 
 	blas_buffer_settings.usage_flags = vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR;
 	blas_buffer_settings.location = MemoryLocation::DeviceLocal;
 	blas_buffer_settings.queues = QueueFamilyFlags::Compute | QueueFamilyFlags::Graphics | QueueFamilyFlags::Transfer;
-	blas.buffer = storage.add_buffer(buffer_name, blas_buffer_settings);
+	blas.buffer = memory_manager.get_storage().add_buffer(buffer_name, blas_buffer_settings);
 
-	blas.asci.buffer = storage.get_buffer(blas.buffer).get();
+	blas.asci.buffer = memory_manager.get_storage().get_buffer(blas.buffer).get();
 	blas.asci.size = asbsi.accelerationStructureSize;
 	blas.asci.type = vk::AccelerationStructureTypeKHR::eBottomLevel;
 	blas.handle = vmc.logical_device.get().createAccelerationStructureKHR(blas.asci);
@@ -147,7 +147,7 @@ uint32_t AccelerationStructureBuilder::add_instance(uint32_t blas_idx, const vk:
 void AccelerationStructureBuilder::update_instance(uint32_t instance_idx, const vk::TransformMatrixKHR& M)
 {
 	instances[instance_idx].transform = M;
-	storage.get_buffer(instances_buffer).update_data(&instances[instance_idx], 1, instance_idx);
+	memory_manager.get_storage().get_buffer(instances_buffer).update_data(&instances[instance_idx], 1, instance_idx);
 }
 
 void AccelerationStructureBuilder::construct(vk::CommandBuffer& cb, QueueFamilyFlags build_queue, const std::string& buffer_name)
@@ -158,10 +158,10 @@ void AccelerationStructureBuilder::construct(vk::CommandBuffer& cb, QueueFamilyF
 	instances_buffer_settings.usage_flags = vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR;
 	instances_buffer_settings.location = MemoryLocation::DeviceLocal;
 	instances_buffer_settings.queues = QueueFamilyFlags::Compute | QueueFamilyFlags::Graphics | QueueFamilyFlags::Transfer;
-	instances_buffer = storage.add_buffer(buffer_name + " instances (vkte internal)", instances_buffer_settings);
+	instances_buffer = memory_manager.get_storage().add_buffer(buffer_name + " instances (vkte internal)", instances_buffer_settings);
 
 	vk::DeviceOrHostAddressConstKHR instance_data_device_address;
-	instance_data_device_address.deviceAddress = storage.get_buffer(instances_buffer).get_device_address();
+	instance_data_device_address.deviceAddress = memory_manager.get_storage().get_buffer(instances_buffer).get_device_address();
 
 	top_level_as.asg.geometryType = vk::GeometryTypeKHR::eInstances;
 	top_level_as.asg.flags = vk::GeometryFlagBitsKHR::eOpaque;
@@ -184,16 +184,16 @@ void AccelerationStructureBuilder::construct(vk::CommandBuffer& cb, QueueFamilyF
 	top_level_as_buffer_settings.usage_flags = vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR;
 	top_level_as_buffer_settings.location = MemoryLocation::DeviceLocal;
 	top_level_as_buffer_settings.queues = QueueFamilyFlags::Compute | QueueFamilyFlags::Graphics | QueueFamilyFlags::Transfer;
-	top_level_as.buffer = storage.add_buffer(buffer_name, top_level_as_buffer_settings);
+	top_level_as.buffer = memory_manager.add_bindless_buffer(buffer_name, top_level_as_buffer_settings);
 
-	top_level_as.asci.buffer = storage.get_buffer(top_level_as.buffer).get();
+	top_level_as.asci.buffer = memory_manager.get_buffer(top_level_as.buffer).get();
 	top_level_as.asci.size = asbsi.accelerationStructureSize;
 	top_level_as.asci.type = vk::AccelerationStructureTypeKHR::eTopLevel;
 	top_level_as.handle = vmc.logical_device.get().createAccelerationStructureKHR(top_level_as.asci);
 
 	wdsas.accelerationStructureCount = 1;
 	wdsas.pAccelerationStructures = &(top_level_as.handle);
-	storage.get_buffer(top_level_as.buffer).pNext = &(wdsas);
+	memory_manager.get_buffer(top_level_as.buffer).pNext = &(wdsas);
 
 	const ScratchBuffer scratch = create_scratch_buffer(buffer_name, asbsi.buildScratchSize);
 	top_level_as.scratch_buffer = scratch.buffer;
@@ -218,7 +218,7 @@ void AccelerationStructureBuilder::update_tlas(vk::CommandBuffer& cb, QueueFamil
 		BLAS& blas = bottom_level_as[blas_idx];
 		asbgis.push_back(blas.asbgi);
 		pasbris.push_back(blas.asbris.data());
-		blas_memory_barriers.push_back(vk::BufferMemoryBarrier2(vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR, vk::AccessFlagBits2::eAccelerationStructureWriteKHR, vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR, vk::AccessFlagBits2::eAccelerationStructureReadKHR, vmc.queue_families.get(build_queue), vmc.queue_families.get(build_queue), storage.get_buffer(blas.buffer).get(), 0, storage.get_buffer(blas.buffer).get_byte_size()));
+		blas_memory_barriers.push_back(vk::BufferMemoryBarrier2(vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR, vk::AccessFlagBits2::eAccelerationStructureWriteKHR, vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR, vk::AccessFlagBits2::eAccelerationStructureReadKHR, vmc.queue_families.get(build_queue), vmc.queue_families.get(build_queue), memory_manager.get_storage().get_buffer(blas.buffer).get(), 0, memory_manager.get_storage().get_buffer(blas.buffer).get_byte_size()));
 	}
 	blas_update_indices.clear();
 	cb.buildAccelerationStructuresKHR(asbgis, pasbris);
@@ -228,7 +228,7 @@ void AccelerationStructureBuilder::update_tlas(vk::CommandBuffer& cb, QueueFamil
 	blas_dependency_info.pBufferMemoryBarriers = blas_memory_barriers.data();
 	cb.pipelineBarrier2(blas_dependency_info);
 	cb.buildAccelerationStructuresKHR({top_level_as.asbgi}, {&top_level_as.asbri});
-	const vkte::Buffer& buffer = storage.get_buffer(top_level_as.buffer);
+	const vkte::Buffer& buffer = memory_manager.get_buffer(top_level_as.buffer);
 	vk::BufferMemoryBarrier2 barrier = vk::BufferMemoryBarrier2(vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR, vk::AccessFlagBits2::eAccelerationStructureWriteKHR, vk::PipelineStageFlagBits2::eAllCommands, vk::AccessFlagBits2::eAccelerationStructureReadKHR, vmc.queue_families.get(build_queue), vmc.queue_families.get(build_queue), buffer.get(), 0, buffer.get_byte_size());
 	vk::DependencyInfo tlas_dependency_info;
 	tlas_dependency_info.dependencyFlags = vk::DependencyFlagBits::eDeviceGroup;
