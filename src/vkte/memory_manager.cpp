@@ -179,7 +179,7 @@ void MemoryManager::flush_pending_destructions(bool force)
 			images_of_bindless[pd.bindless_image.id].generation++;
 			free_image_indices.push_back(pd.bindless_image.id);
 		}
-		storage.destroy(pd.handle);
+		if (pd.handle.valid()) storage.destroy(pd.handle);
 	}
 }
 
@@ -319,12 +319,11 @@ void MemoryManager::unregister_buffer(const BufferHandle& handle)
 	VKTE_ASSERT(handle.id < buffers_of_bindless.size() && buffers_of_bindless[handle.id].resource.valid() && handle.generation == buffers_of_bindless[handle.id].generation,
 		"vkte: Trying to unregister an invalid, already unregistered, or stale buffer handle");
 	BindlessBuffer& buffer = buffers_of_bindless[handle.id];
+	pending_destructions.push(PendingDestruction(ResourceHandle{}, global_frame_counter, handle));
 	if (!buffer.unique_name.empty()) buffer_names.erase(buffer.unique_name);
 	buffer.resource = ResourceHandle{};
 	buffer.unique_name.clear();
-	buffer.generation++;
 	mark_buffer_dirty(handle.id);
-	free_buffer_indices.push_back(handle.id);
 }
 
 void MemoryManager::unregister_image(const ImageHandle& handle)
@@ -332,12 +331,11 @@ void MemoryManager::unregister_image(const ImageHandle& handle)
 	VKTE_ASSERT(handle.id < images_of_bindless.size() && images_of_bindless[handle.id].resource.valid() && handle.generation == images_of_bindless[handle.id].generation,
 		"vkte: Trying to unregister an invalid, already unregistered, or stale image handle");
 	BindlessImage& image = images_of_bindless[handle.id];
+	pending_destructions.push(PendingDestruction(ResourceHandle{}, global_frame_counter, handle));
 	if (!image.unique_name.empty()) image_names.erase(image.unique_name);
 	image.resource = ResourceHandle{};
 	image.unique_name.clear();
-	image.generation++;
 	mark_image_dirty(handle.id);
-	free_image_indices.push_back(handle.id);
 }
 
 void MemoryManager::begin_frame(uint32_t frame_index)
