@@ -3,7 +3,6 @@
 #include <cmath>
 #include <cstring>
 #include <format>
-#include "vkte/buffer.hpp"
 #include "vkte/command.hpp"
 #include "vkte/vkte_log.hpp"
 #include "vkte/vulkan_main_context.hpp"
@@ -219,38 +218,8 @@ std::pair<vk::Image, VmaAllocation> Image::create_image(Queues queues, vk::Image
 	return *fallback_result;
 }
 
-void copy_buffer_to_image(Command& command, const Buffer& buffer, vk::Extent3D extent, vk::Image image, uint32_t layer_count, uint32_t pixel_byte_size)
-{
-	vk::CommandBuffer& cb = command.get_one_time_transfer_buffer();
-	std::vector<vk::BufferImageCopy> copy_regions;
-	for (uint32_t i = 0; i < layer_count; ++i)
-	{
-		vk::BufferImageCopy copy_region{};
-		copy_region.bufferOffset = i * extent.width * extent.height * pixel_byte_size;
-		copy_region.bufferRowLength = 0;
-		copy_region.bufferImageHeight = 0;
-		copy_region.imageSubresource.aspectMask = vk::ImageAspectFlagBits::eColor;
-		copy_region.imageSubresource.mipLevel = 0;
-		copy_region.imageSubresource.baseArrayLayer = i;
-		copy_region.imageSubresource.layerCount = 1;
-		copy_region.imageOffset = vk::Offset3D{0, 0, 0};
-		copy_region.imageExtent = extent;
-		copy_regions.push_back(copy_region);
-	}
-
-	cb.copyBufferToImage(buffer.get(), image, vk::ImageLayout::eTransferDstOptimal, copy_regions);
-	command.submit_transfer(cb, true);
-}
-
 void Image::create_image_from_data(const std::byte* data, Command& command, Queues queues, uint32_t base_mip_map_lvl, vk::ImageUsageFlags usage_flags, vk::ImageViewType image_view_type, MemoryLocation location)
 {
-	Buffer::Settings staging_settings;
-	staging_settings.initial_data = std::as_bytes(std::span(data, byte_size));
-	staging_settings.usage_flags = vk::BufferUsageFlagBits::eTransferSrc;
-	staging_settings.location = MemoryLocation::HostVisible;
-	staging_settings.queues = QueueFamilyFlags::Transfer;
-	Buffer buffer(vmc, command, staging_settings);
-
 	vk::FormatProperties format_properties = vmc.physical_device.get().getFormatProperties(format);
 	if (!(format_properties.optimalTilingFeatures & vk::FormatFeatureFlagBits::eSampledImageFilterLinear))
 	{
@@ -258,8 +227,13 @@ void Image::create_image_from_data(const std::byte* data, Command& command, Queu
 		base_mip_map_lvl = 0;
 	}
 
-	auto move_buffer_to_image = [&](vk::Image image, uint32_t mip_levels) -> void {
-		// copy image data to tmp_image
+	auto upload_data_to_image = [&](vk::Image image, uint32_t mip_levels) -> void {
+		const vk::ImageSubresourceRange range(vk::ImageAspectFlagBits::eColor, 0, mip_levels, 0, layer_count);
+		vmc.logical_device.get().transitionImageLayout(vk::HostImageLayoutTransitionInfo(image, vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral, range));
+
+		const vk::MemoryToImageCopy region(data, 0, 0, vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, 0, layer_count), vk::Offset3D(0, 0, 0), vk::Extent3D(w, h, d));
+		vmc.logical_device.get().copyMemoryToImage(vk::CopyMemoryToImageInfo({}, image, vk::ImageLayout::eGeneral, region));
+
 		vk::CommandBuffer& cb = command.get_one_time_transfer_buffer();
 		perform_image_layout_transition(cb, {
 			.image = image,
@@ -270,15 +244,14 @@ void Image::create_image_from_data(const std::byte* data, Command& command, Queu
 				.base_array_layer = 0,
 				.layer_count = layer_count
 			},
-			.old_layout = vk::ImageLayout::eUndefined,
+			.old_layout = vk::ImageLayout::eGeneral,
 			.new_layout = vk::ImageLayout::eTransferDstOptimal,
-			.src_stage = vk::PipelineStageFlagBits2::eTransfer,
-			.src_access = vk::AccessFlagBits2::eNone,
+			.src_stage = vk::PipelineStageFlagBits2::eHost,
+			.src_access = vk::AccessFlagBits2::eHostWrite,
 			.dst_stage = vk::PipelineStageFlagBits2::eTransfer,
 			.dst_access = vk::AccessFlagBits2::eTransferWrite
 		});
 		command.submit_transfer(cb, true);
-		copy_buffer_to_image(command, buffer, vk::Extent3D(w, h, d), image, layer_count, bytes_per_pixel);
 	};
 
 	const vk::ImageCreateFlags image_create_flags = get_image_create_flags(image_view_type);
@@ -287,8 +260,8 @@ void Image::create_image_from_data(const std::byte* data, Command& command, Queu
 	// create image with original resolution and copy to actual image with reduced resolution
 	if (base_mip_map_lvl > 0)
 	{
-		auto [tmp_image, tmp_alloc] = create_image(QueueFamilyFlags::Graphics | QueueFamilyFlags::Transfer, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eTransferSrc, vk::SampleCountFlagBits::e1, false, format, vk::Extent3D(w, h, d), layer_count);
-		move_buffer_to_image(tmp_image, 1);
+		auto [tmp_image, tmp_alloc] = create_image(QueueFamilyFlags::Graphics | QueueFamilyFlags::Transfer, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eHostTransfer, vk::SampleCountFlagBits::e1, false, format, vk::Extent3D(w, h, d), layer_count);
+		upload_data_to_image(tmp_image, 1);
 
 		vk::Offset3D tmp_image_offset(w, h, 1);
 		mip_levels -= base_mip_map_lvl;
@@ -338,9 +311,9 @@ void Image::create_image_from_data(const std::byte* data, Command& command, Queu
 	}
 	else
 	{
-		// layout of image is transitioned in move_buffer_to_image
-		std::tie(image, vmaa) = create_image(queues, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eTransferSrc | usage_flags, vk::SampleCountFlagBits::e1, true, format, vk::Extent3D(w, h, d), layer_count, image_create_flags, location);
-		move_buffer_to_image(image, mip_levels);
+		// layout of image is transitioned in upload_data_to_image
+		std::tie(image, vmaa) = create_image(queues, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eHostTransfer | usage_flags, vk::SampleCountFlagBits::e1, true, format, vk::Extent3D(w, h, d), layer_count, image_create_flags, location);
+		upload_data_to_image(image, mip_levels);
 	}
 	// set current layout of this image
 	layout = vk::ImageLayout::eTransferDstOptimal;

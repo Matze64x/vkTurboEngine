@@ -79,6 +79,8 @@ DeviceFeatureChain build_required_feature_chain(const DeviceFeatures& features)
 	vulkan_13.shaderDemoteToHelperInvocation = VK_TRUE;
 	vulkan_13.dynamicRendering = VK_TRUE;
 
+	chain.get<vk::PhysicalDeviceVulkan14Features>().hostImageCopy = VK_TRUE;
+
 	chain.get<vk::PhysicalDeviceAccelerationStructureFeaturesKHR>().accelerationStructure = features.ray_tracing;
 	chain.get<vk::PhysicalDeviceRayQueryFeaturesKHR>().rayQuery = features.ray_tracing;
 	chain.get<vk::PhysicalDeviceRayTracingPipelineFeaturesKHR>().rayTracingPipeline = features.ray_tracing;
