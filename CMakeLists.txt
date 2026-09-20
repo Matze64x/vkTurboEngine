@@ -2,6 +2,21 @@ cmake_minimum_required(VERSION 3.19)
 project(vkTurboEngine)
 set(CMAKE_CXX_STANDARD 20)
 
+find_program(CCACHE_PROGRAM ccache)
+if (CCACHE_PROGRAM)
+	set(CMAKE_CXX_COMPILER_LAUNCHER ${CCACHE_PROGRAM})
+endif()
+
+if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+	find_program(MOLD_PROGRAM mold)
+	find_program(LLD_PROGRAM ld.lld)
+	if (MOLD_PROGRAM)
+		add_link_options(-fuse-ld=mold)
+	elseif (LLD_PROGRAM)
+		add_link_options(-fuse-ld=lld)
+	endif()
+endif()
+
 option(ENABLE_VKTE_LOGGING "Enable vkte logging" OFF)
 
 set(SDL3_DIR "${PROJECT_SOURCE_DIR}/dependencies/SDL3")
