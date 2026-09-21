@@ -17,7 +17,7 @@ struct DescriptorSetLayoutHandle : HandleBase {};
 struct DescriptorSetsHandle : HandleBase {};
 struct PipelineHandle : HandleBase {};
 struct SemaphoreHandle : HandleBase {};
-struct FenceHandle : HandleBase {};
+struct TimelineSemaphoreHandle : HandleBase {};
 struct DeviceTimerHandle : HandleBase {};
 struct AccelerationStructureBuilderHandle : HandleBase {};
 struct CommandBufferHandle : HandleBase {};

@@ -24,9 +24,9 @@ public:
 	void run_one_time_compute(const std::function<void(vk::CommandBuffer&)>& record);
 	void run_one_time_transfer(const std::function<void(vk::CommandBuffer&)>& record);
 
-	void submit_graphics(vk::ArrayProxy<const vk::SubmitInfo> const& submit_infos, vk::Fence fence = {}) const;
-	void submit_compute(vk::ArrayProxy<const vk::SubmitInfo> const& submit_infos, vk::Fence fence = {}) const;
-	void submit_transfer(vk::ArrayProxy<const vk::SubmitInfo> const& submit_infos, vk::Fence fence = {}) const;
+	void submit_graphics(vk::ArrayProxy<const vk::SubmitInfo2> const& submit_infos) const;
+	void submit_compute(vk::ArrayProxy<const vk::SubmitInfo2> const& submit_infos) const;
+	void submit_transfer(vk::ArrayProxy<const vk::SubmitInfo2> const& submit_infos) const;
 
 private:
 	enum Type

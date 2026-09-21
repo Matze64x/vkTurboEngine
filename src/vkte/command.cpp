@@ -85,18 +85,18 @@ void Command::run_one_time(const std::function<void(vk::CommandBuffer&)>& record
 	cb.reset();
 }
 
-void Command::submit_graphics(vk::ArrayProxy<const vk::SubmitInfo> const& submit_infos, vk::Fence fence) const
+void Command::submit_graphics(vk::ArrayProxy<const vk::SubmitInfo2> const& submit_infos) const
 {
-	vmc.get_graphics_queue().submit(submit_infos, fence);
+	vmc.get_graphics_queue().submit2(submit_infos);
 }
 
-void Command::submit_compute(vk::ArrayProxy<const vk::SubmitInfo> const& submit_infos, vk::Fence fence) const
+void Command::submit_compute(vk::ArrayProxy<const vk::SubmitInfo2> const& submit_infos) const
 {
-	vmc.get_compute_queue().submit(submit_infos, fence);
+	vmc.get_compute_queue().submit2(submit_infos);
 }
 
-void Command::submit_transfer(vk::ArrayProxy<const vk::SubmitInfo> const& submit_infos, vk::Fence fence) const
+void Command::submit_transfer(vk::ArrayProxy<const vk::SubmitInfo2> const& submit_infos) const
 {
-	vmc.get_transfer_queue().submit(submit_infos, fence);
+	vmc.get_transfer_queue().submit2(submit_infos);
 }
 } // namespace vkte

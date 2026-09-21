@@ -42,9 +42,9 @@ Engine::~Engine()
 	{
 		if (semaphore) vmc.logical_device.get().destroySemaphore(semaphore);
 	}
-	for (const vk::Fence& fence : fences)
+	for (const vk::Semaphore& semaphore : timeline_semaphores)
 	{
-		if (fence) vmc.logical_device.get().destroyFence(fence);
+		if (semaphore) vmc.logical_device.get().destroySemaphore(semaphore);
 	}
 	device_timers.clear();
 	shader_repository.destruct();
@@ -322,41 +322,32 @@ vk::Semaphore Engine::get(SemaphoreHandle handle) const
 	return semaphores.at(handle.id);
 }
 
-FenceHandle Engine::add_fence()
+TimelineSemaphoreHandle Engine::add_timeline_semaphore()
 {
-	// all fences are created as signaled, if an unsignaled fence is needed use reset_fence
-	vk::FenceCreateInfo fci;
-	fci.flags = vk::FenceCreateFlagBits::eSignaled;
-	fences.push_back(vmc.logical_device.get().createFence(fci));
-	return FenceHandle{uint32_t(fences.size() - 1)};
+	const vk::SemaphoreTypeCreateInfo stci(vk::SemaphoreType::eTimeline, 0);
+	const vk::SemaphoreCreateInfo sci({}, &stci);
+	timeline_semaphores.push_back(vmc.logical_device.get().createSemaphore(sci));
+	return TimelineSemaphoreHandle{uint32_t(timeline_semaphores.size() - 1)};
 }
 
-void Engine::destroy(FenceHandle handle)
+void Engine::destroy(TimelineSemaphoreHandle handle)
 {
-	VKTE_ASSERT(handle.valid() && handle.id < fences.size(), "vkte: Invalid fence handle!");
-	vmc.logical_device.get().destroyFence(fences.at(handle.id));
-	fences.at(handle.id) = vk::Fence();
+	VKTE_ASSERT(handle.valid() && handle.id < timeline_semaphores.size(), "vkte: Invalid timeline semaphore handle!");
+	vmc.logical_device.get().destroySemaphore(timeline_semaphores.at(handle.id));
+	timeline_semaphores.at(handle.id) = vk::Semaphore();
 }
 
-vk::Fence Engine::get(FenceHandle handle) const
+vk::Semaphore Engine::get(TimelineSemaphoreHandle handle) const
 {
-	VKTE_ASSERT(handle.valid() && handle.id < fences.size(), "vkte: Invalid fence handle!");
-	return fences.at(handle.id);
+	VKTE_ASSERT(handle.valid() && handle.id < timeline_semaphores.size(), "vkte: Invalid timeline semaphore handle!");
+	return timeline_semaphores.at(handle.id);
 }
 
-void Engine::wait_for_fence(FenceHandle handle) const
+void Engine::wait_semaphore(TimelineSemaphoreHandle handle, uint64_t value) const
 {
-	VKTE_CHECK(vmc.logical_device.get().waitForFences(get(handle), 1, uint64_t(-1)), "vkte: Failed to wait for fence!");
-}
-
-void Engine::reset_fence(FenceHandle handle) const
-{
-	vmc.logical_device.get().resetFences(get(handle));
-}
-
-bool Engine::is_fence_finished(FenceHandle handle) const
-{
-	return vmc.logical_device.get().getFenceStatus(get(handle)) == vk::Result::eSuccess;
+	const vk::Semaphore semaphore = get(handle);
+	const vk::SemaphoreWaitInfo swi({}, semaphore, value);
+	VKTE_CHECK(vmc.logical_device.get().waitSemaphores(swi, uint64_t(-1)), "vkte: Failed to wait for timeline semaphore!");
 }
 
 DeviceTimerHandle Engine::add_device_timer(uint32_t timer_count)

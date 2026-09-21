@@ -77,12 +77,10 @@ public:
 	void destroy(SemaphoreHandle handle);
 	vk::Semaphore get(SemaphoreHandle handle) const;
 
-	FenceHandle add_fence();
-	void destroy(FenceHandle handle);
-	vk::Fence get(FenceHandle handle) const;
-	void wait_for_fence(FenceHandle handle) const;
-	void reset_fence(FenceHandle handle) const;
-	bool is_fence_finished(FenceHandle handle) const;
+	TimelineSemaphoreHandle add_timeline_semaphore();
+	void destroy(TimelineSemaphoreHandle handle);
+	vk::Semaphore get(TimelineSemaphoreHandle handle) const;
+	void wait_semaphore(TimelineSemaphoreHandle handle, uint64_t value) const;
 
 	// timer_count named timestamp slots backed by a single query pool
 	DeviceTimerHandle add_device_timer(uint32_t timer_count);
@@ -116,7 +114,7 @@ private:
 	std::vector<std::vector<vk::DescriptorSet>> descriptor_sets;
 	std::vector<vkte::Pipeline> pipelines;
 	std::vector<vk::Semaphore> semaphores;
-	std::vector<vk::Fence> fences;
+	std::vector<vk::Semaphore> timeline_semaphores;
 	std::vector<std::unique_ptr<DeviceTimer>> device_timers;
 	std::vector<std::unique_ptr<AccelerationStructureBuilder>> acceleration_structure_builders;
 	std::unique_ptr<Swapchain> swapchain;
