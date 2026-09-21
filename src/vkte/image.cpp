@@ -234,24 +234,24 @@ void Image::create_image_from_data(const std::byte* data, Command& command, Queu
 		const vk::MemoryToImageCopy region(data, 0, 0, vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, 0, layer_count), vk::Offset3D(0, 0, 0), vk::Extent3D(w, h, d));
 		vmc.logical_device.get().copyMemoryToImage(vk::CopyMemoryToImageInfo({}, image, vk::ImageLayout::eGeneral, region));
 
-		vk::CommandBuffer& cb = command.get_one_time_transfer_buffer();
-		perform_image_layout_transition(cb, {
-			.image = image,
-			.range = {
-				.aspect = vk::ImageAspectFlagBits::eColor,
-				.base_mip_level = 0,
-				.level_count = mip_levels,
-				.base_array_layer = 0,
-				.layer_count = layer_count
-			},
-			.old_layout = vk::ImageLayout::eGeneral,
-			.new_layout = vk::ImageLayout::eTransferDstOptimal,
-			.src_stage = vk::PipelineStageFlagBits2::eHost,
-			.src_access = vk::AccessFlagBits2::eHostWrite,
-			.dst_stage = vk::PipelineStageFlagBits2::eTransfer,
-			.dst_access = vk::AccessFlagBits2::eTransferWrite
+		command.run_one_time_transfer([&](vk::CommandBuffer& cb) {
+			perform_image_layout_transition(cb, {
+				.image = image,
+				.range = {
+					.aspect = vk::ImageAspectFlagBits::eColor,
+					.base_mip_level = 0,
+					.level_count = mip_levels,
+					.base_array_layer = 0,
+					.layer_count = layer_count
+				},
+				.old_layout = vk::ImageLayout::eGeneral,
+				.new_layout = vk::ImageLayout::eTransferDstOptimal,
+				.src_stage = vk::PipelineStageFlagBits2::eHost,
+				.src_access = vk::AccessFlagBits2::eHostWrite,
+				.dst_stage = vk::PipelineStageFlagBits2::eTransfer,
+				.dst_access = vk::AccessFlagBits2::eTransferWrite
+			});
 		});
-		command.submit_transfer(cb, true);
 	};
 
 	const vk::ImageCreateFlags image_create_flags = get_image_create_flags(image_view_type);
@@ -270,42 +270,42 @@ void Image::create_image_from_data(const std::byte* data, Command& command, Queu
 		byte_size = vk::DeviceSize(w) * h * bytes_per_pixel * layer_count;
 
 		// create image with reduced resolution by blitting
-		vk::CommandBuffer& cb = command.get_one_time_graphics_buffer();
-		perform_image_layout_transition(cb, {
-			.image = tmp_image,
-			.range = {
-				.aspect = vk::ImageAspectFlagBits::eColor,
-				.base_mip_level = 0,
-				.level_count = 1,
-				.base_array_layer = 0,
-				.layer_count = layer_count
-			},
-			.old_layout = vk::ImageLayout::eTransferDstOptimal,
-			.new_layout = vk::ImageLayout::eTransferSrcOptimal,
-			.src_stage = vk::PipelineStageFlagBits2::eTransfer,
-			.src_access = vk::AccessFlagBits2::eTransferWrite,
-			.dst_stage = vk::PipelineStageFlagBits2::eTransfer,
-			.dst_access = vk::AccessFlagBits2::eTransferRead
+		command.run_one_time_graphics([&](vk::CommandBuffer& cb) {
+			perform_image_layout_transition(cb, {
+				.image = tmp_image,
+				.range = {
+					.aspect = vk::ImageAspectFlagBits::eColor,
+					.base_mip_level = 0,
+					.level_count = 1,
+					.base_array_layer = 0,
+					.layer_count = layer_count
+				},
+				.old_layout = vk::ImageLayout::eTransferDstOptimal,
+				.new_layout = vk::ImageLayout::eTransferSrcOptimal,
+				.src_stage = vk::PipelineStageFlagBits2::eTransfer,
+				.src_access = vk::AccessFlagBits2::eTransferWrite,
+				.dst_stage = vk::PipelineStageFlagBits2::eTransfer,
+				.dst_access = vk::AccessFlagBits2::eTransferRead
+			});
+			std::tie(image, vmaa) = create_image(queues, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eTransferSrc | usage_flags, vk::SampleCountFlagBits::e1, true, format, vk::Extent3D(w, h, d), layer_count, image_create_flags, location);
+			perform_image_layout_transition(cb, {
+				.image = image,
+				.range = {
+					.aspect = vk::ImageAspectFlagBits::eColor,
+					.base_mip_level = 0,
+					.level_count = mip_levels,
+					.base_array_layer = 0,
+					.layer_count = layer_count
+				},
+				.old_layout = vk::ImageLayout::eUndefined,
+				.new_layout = vk::ImageLayout::eTransferDstOptimal,
+				.src_stage = vk::PipelineStageFlagBits2::eTransfer,
+				.src_access = vk::AccessFlagBits2::eNone,
+				.dst_stage = vk::PipelineStageFlagBits2::eTransfer,
+				.dst_access = vk::AccessFlagBits2::eTransferWrite
+			});
+			blit_image(cb, tmp_image, 0, tmp_image_offset, image, 0, {int32_t(w), int32_t(h), 1}, layer_count);
 		});
-		std::tie(image, vmaa) = create_image(queues, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eTransferSrc | usage_flags, vk::SampleCountFlagBits::e1, true, format, vk::Extent3D(w, h, d), layer_count, image_create_flags, location);
-		perform_image_layout_transition(cb, {
-			.image = image,
-			.range = {
-				.aspect = vk::ImageAspectFlagBits::eColor,
-				.base_mip_level = 0,
-				.level_count = mip_levels,
-				.base_array_layer = 0,
-				.layer_count = layer_count
-			},
-			.old_layout = vk::ImageLayout::eUndefined,
-			.new_layout = vk::ImageLayout::eTransferDstOptimal,
-			.src_stage = vk::PipelineStageFlagBits2::eTransfer,
-			.src_access = vk::AccessFlagBits2::eNone,
-			.dst_stage = vk::PipelineStageFlagBits2::eTransfer,
-			.dst_access = vk::AccessFlagBits2::eTransferWrite
-		});
-		blit_image(cb, tmp_image, 0, tmp_image_offset, image, 0, {int32_t(w), int32_t(h), 1}, layer_count);
-		command.submit_graphics(cb, true);
 
 		vmaDestroyImage(vmc.va, VkImage(tmp_image), tmp_alloc);
 	}
@@ -371,24 +371,24 @@ void Image::create_sampler(vk::Filter filter, vk::SamplerAddressMode sampler_add
 void Image::transition_image_layout(Command& command, vk::ImageLayout new_layout, vk::PipelineStageFlags2 src_stage_flags, vk::PipelineStageFlags2 dst_stage_flags, vk::AccessFlags2 src_access_flags, vk::AccessFlags2 dst_access_flags)
 {
 	// transition the image layout of this image
-	vk::CommandBuffer& cb = command.get_one_time_graphics_buffer();
-	perform_image_layout_transition(cb, {
-		.image = image,
-		.range = {
-			.aspect = default_aspect_for_format(format),
-			.base_mip_level = 0,
-			.level_count = mip_levels,
-			.base_array_layer = 0,
-			.layer_count = layer_count
-		},
-		.old_layout = layout,
-		.new_layout = new_layout,
-		.src_stage = src_stage_flags,
-		.src_access = src_access_flags,
-		.dst_stage = dst_stage_flags,
-		.dst_access = dst_access_flags
+	command.run_one_time_graphics([&](vk::CommandBuffer& cb) {
+		perform_image_layout_transition(cb, {
+			.image = image,
+			.range = {
+				.aspect = default_aspect_for_format(format),
+				.base_mip_level = 0,
+				.level_count = mip_levels,
+				.base_array_layer = 0,
+				.layer_count = layer_count
+			},
+			.old_layout = layout,
+			.new_layout = new_layout,
+			.src_stage = src_stage_flags,
+			.src_access = src_access_flags,
+			.dst_stage = dst_stage_flags,
+			.dst_access = dst_access_flags
+		});
 	});
-	command.submit_graphics(cb, true);
 	layout = new_layout;
 }
 
@@ -436,63 +436,61 @@ vk::Sampler Image::get_sampler() const
 
 void Image::generate_mipmaps(Command& command)
 {
-	vk::CommandBuffer& cb = command.get_one_time_graphics_buffer();
+	command.run_one_time_graphics([&](vk::CommandBuffer& cb) {
+		ImageSubresourceRangeDescription range{
+			.aspect = vk::ImageAspectFlagBits::eColor,
+			.base_mip_level = 0,
+			.level_count = 1,
+			.base_array_layer = 0,
+			.layer_count = layer_count
+		};
 
-	ImageSubresourceRangeDescription range{
-		.aspect = vk::ImageAspectFlagBits::eColor,
-		.base_mip_level = 0,
-		.level_count = 1,
-		.base_array_layer = 0,
-		.layer_count = layer_count
-	};
+		uint32_t mip_w = w;
+		uint32_t mip_h = h;
+		for (uint32_t i = 1; i < mip_levels; ++i)
+		{
+			range.base_mip_level = i - 1;
 
-	uint32_t mip_w = w;
-	uint32_t mip_h = h;
-	for (uint32_t i = 1; i < mip_levels; ++i)
-	{
-		range.base_mip_level = i - 1;
+			perform_image_layout_transition(cb, {
+				.image = image,
+				.range = range,
+				.old_layout = vk::ImageLayout::eTransferDstOptimal,
+				.new_layout = vk::ImageLayout::eTransferSrcOptimal,
+				.src_stage = vk::PipelineStageFlagBits2::eTransfer,
+				.src_access = vk::AccessFlagBits2::eTransferWrite,
+				.dst_stage = vk::PipelineStageFlagBits2::eTransfer,
+				.dst_access = vk::AccessFlagBits2::eTransferRead
+			});
 
+			blit_image(cb, image, i - 1, {int32_t(mip_w), int32_t(mip_h), 1}, image, i, {int32_t(mip_w > 1 ? mip_w / 2 : 1), int32_t(mip_h > 1 ? mip_h / 2 : 1), 1}, layer_count);
+
+			perform_image_layout_transition(cb, {
+				.image = image,
+				.range = range,
+				.old_layout = vk::ImageLayout::eTransferSrcOptimal,
+				.new_layout = vk::ImageLayout::eShaderReadOnlyOptimal,
+				.src_stage = vk::PipelineStageFlagBits2::eTransfer,
+				.src_access = vk::AccessFlagBits2::eTransferRead,
+				.dst_stage = vk::PipelineStageFlagBits2::eFragmentShader,
+				.dst_access = vk::AccessFlagBits2::eShaderRead
+			});
+
+			if (mip_w > 1) mip_w /= 2;
+			if (mip_h > 1) mip_h /= 2;
+		}
+
+		range.base_mip_level = mip_levels - 1;
 		perform_image_layout_transition(cb, {
 			.image = image,
 			.range = range,
 			.old_layout = vk::ImageLayout::eTransferDstOptimal,
-			.new_layout = vk::ImageLayout::eTransferSrcOptimal,
-			.src_stage = vk::PipelineStageFlagBits2::eTransfer,
-			.src_access = vk::AccessFlagBits2::eTransferWrite,
-			.dst_stage = vk::PipelineStageFlagBits2::eTransfer,
-			.dst_access = vk::AccessFlagBits2::eTransferRead
-		});
-
-		blit_image(cb, image, i - 1, {int32_t(mip_w), int32_t(mip_h), 1}, image, i, {int32_t(mip_w > 1 ? mip_w / 2 : 1), int32_t(mip_h > 1 ? mip_h / 2 : 1), 1}, layer_count);
-
-		perform_image_layout_transition(cb, {
-			.image = image,
-			.range = range,
-			.old_layout = vk::ImageLayout::eTransferSrcOptimal,
 			.new_layout = vk::ImageLayout::eShaderReadOnlyOptimal,
 			.src_stage = vk::PipelineStageFlagBits2::eTransfer,
-			.src_access = vk::AccessFlagBits2::eTransferRead,
+			.src_access = vk::AccessFlagBits2::eTransferWrite,
 			.dst_stage = vk::PipelineStageFlagBits2::eFragmentShader,
 			.dst_access = vk::AccessFlagBits2::eShaderRead
 		});
-
-		if (mip_w > 1) mip_w /= 2;
-		if (mip_h > 1) mip_h /= 2;
-	}
-
-	range.base_mip_level = mip_levels - 1;
-	perform_image_layout_transition(cb, {
-		.image = image,
-		.range = range,
-		.old_layout = vk::ImageLayout::eTransferDstOptimal,
-		.new_layout = vk::ImageLayout::eShaderReadOnlyOptimal,
-		.src_stage = vk::PipelineStageFlagBits2::eTransfer,
-		.src_access = vk::AccessFlagBits2::eTransferWrite,
-		.dst_stage = vk::PipelineStageFlagBits2::eFragmentShader,
-		.dst_access = vk::AccessFlagBits2::eShaderRead
+		layout = vk::ImageLayout::eShaderReadOnlyOptimal;
 	});
-	layout = vk::ImageLayout::eShaderReadOnlyOptimal;
-
-	command.submit_graphics(cb, true);
 }
 } // namespace vkte

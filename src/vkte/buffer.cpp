@@ -97,13 +97,13 @@ void Buffer::apply_memory_operation(std::size_t offset, std::size_t byte_count, 
 
 	if (direction == TransferDirection::BufferToHost)
 	{
-		vk::CommandBuffer& cb = command.get_one_time_transfer_buffer();
-		vk::BufferCopy copy_region;
-		copy_region.srcOffset = offset;
-		copy_region.dstOffset = 0;
-		copy_region.size = byte_count;
-		cb.copyBuffer(buffer, staging_buffer, copy_region);
-		command.submit_transfer(cb, true);
+		command.run_one_time_transfer([&](vk::CommandBuffer& cb) {
+			vk::BufferCopy copy_region;
+			copy_region.srcOffset = offset;
+			copy_region.dstOffset = 0;
+			copy_region.size = byte_count;
+			cb.copyBuffer(buffer, staging_buffer, copy_region);
+		});
 	}
 
 	void* mapped_mem;
@@ -113,13 +113,13 @@ void Buffer::apply_memory_operation(std::size_t offset, std::size_t byte_count, 
 
 	if (direction == TransferDirection::HostToBuffer)
 	{
-		vk::CommandBuffer& cb = command.get_one_time_transfer_buffer();
-		vk::BufferCopy copy_region;
-		copy_region.srcOffset = 0;
-		copy_region.dstOffset = offset;
-		copy_region.size = byte_count;
-		cb.copyBuffer(staging_buffer, buffer, copy_region);
-		command.submit_transfer(cb, true);
+		command.run_one_time_transfer([&](vk::CommandBuffer& cb) {
+			vk::BufferCopy copy_region;
+			copy_region.srcOffset = 0;
+			copy_region.dstOffset = offset;
+			copy_region.size = byte_count;
+			cb.copyBuffer(staging_buffer, buffer, copy_region);
+		});
 	}
 
 	vmaDestroyBuffer(vmc.va, staging_buffer, staging_vmaa);

@@ -73,6 +73,7 @@ DeviceFeatureChain build_required_feature_chain(const DeviceFeatures& features)
 	vulkan_12.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
 	vulkan_12.descriptorBindingUpdateUnusedWhilePending = VK_TRUE;
 	vulkan_12.descriptorBindingVariableDescriptorCount = VK_TRUE;
+	vulkan_12.timelineSemaphore = VK_TRUE;
 
 	vk::PhysicalDeviceVulkan13Features& vulkan_13 = chain.get<vk::PhysicalDeviceVulkan13Features>();
 	vulkan_13.synchronization2 = VK_TRUE;

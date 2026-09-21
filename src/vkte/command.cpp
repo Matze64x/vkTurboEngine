@@ -15,12 +15,17 @@ void Command::construct()
 	one_time_cbs[GRAPHICS] = command_pools[GRAPHICS].create_command_buffers(1)[0];
 	one_time_cbs[COMPUTE] = command_pools[COMPUTE].create_command_buffers(1)[0];
 	one_time_cbs[TRANSFER] = command_pools[TRANSFER].create_command_buffers(1)[0];
+
+	const vk::SemaphoreTypeCreateInfo stci(vk::SemaphoreType::eTimeline, 0);
+	const vk::SemaphoreCreateInfo sci({}, &stci);
+	for (vk::Semaphore& semaphore : timeline_semaphores) semaphore = vmc.logical_device.get().createSemaphore(sci);
 }
 
 void Command::destruct()
 {
 	for (auto& command_pool : command_pools) command_pool.destruct();
 	command_pools.clear();
+	for (const vk::Semaphore& semaphore : timeline_semaphores) vmc.logical_device.get().destroySemaphore(semaphore);
 }
 
 CommandBufferHandle Command::add_command_buffer(QueueFamilyFlags queue)
@@ -36,38 +41,48 @@ vk::CommandBuffer& Command::get(CommandBufferHandle handle)
 	return command_buffers.at(handle.id);
 }
 
-vk::CommandBuffer& Command::begin(CommandBufferHandle handle)
-{
-	return begin(get(handle));
-}
-
-vk::CommandBuffer& Command::get_one_time_graphics_buffer() { return begin(one_time_cbs[GRAPHICS]); }
-
-vk::CommandBuffer& Command::get_one_time_compute_buffer() { return begin(one_time_cbs[COMPUTE]); }
-
-vk::CommandBuffer& Command::get_one_time_transfer_buffer() { return begin(one_time_cbs[TRANSFER]); }
-
-vk::CommandBuffer& Command::begin(vk::CommandBuffer& cb)
+static void begin_cb(vk::CommandBuffer& cb)
 {
 	vk::CommandBufferBeginInfo cbbi;
 	cbbi.flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit;
 	cb.begin(cbbi);
+}
+
+vk::CommandBuffer& Command::begin(CommandBufferHandle handle)
+{
+	vk::CommandBuffer& cb = get(handle);
+	begin_cb(cb);
 	return cb;
 }
 
-void Command::submit_graphics(const vk::CommandBuffer& cb, bool wait_idle) const
+void Command::run_one_time_graphics(const std::function<void(vk::CommandBuffer&)>& record)
 {
-	submit(cb, vmc.get_graphics_queue(), wait_idle);
+	run_one_time(record, vmc.get_graphics_queue(), GRAPHICS);
 }
 
-void Command::submit_compute(const vk::CommandBuffer& cb, bool wait_idle) const
+void Command::run_one_time_compute(const std::function<void(vk::CommandBuffer&)>& record)
 {
-	submit(cb, vmc.get_compute_queue(), wait_idle);
+	run_one_time(record, vmc.get_compute_queue(), COMPUTE);
 }
 
-void Command::submit_transfer(const vk::CommandBuffer& cb, bool wait_idle) const
+void Command::run_one_time_transfer(const std::function<void(vk::CommandBuffer&)>& record)
 {
-	submit(cb, vmc.get_transfer_queue(), wait_idle);
+	run_one_time(record, vmc.get_transfer_queue(), TRANSFER);
+}
+
+void Command::run_one_time(const std::function<void(vk::CommandBuffer&)>& record, const vk::Queue& queue, Type type)
+{
+	vk::CommandBuffer& cb = one_time_cbs[type];
+	begin_cb(cb);
+	record(cb);
+	cb.end();
+	const uint64_t value = ++timeline_values[type];
+	const vk::CommandBufferSubmitInfo cbsi(cb);
+	const vk::SemaphoreSubmitInfo signal_info(timeline_semaphores[type], value, vk::PipelineStageFlagBits2::eAllCommands);
+	queue.submit2(vk::SubmitInfo2({}, {}, cbsi, signal_info));
+	const vk::SemaphoreWaitInfo swi({}, timeline_semaphores[type], value);
+	VKTE_CHECK(vmc.logical_device.get().waitSemaphores(swi, uint64_t(-1)), "vkte: Failed to wait for timeline semaphore!");
+	cb.reset();
 }
 
 void Command::submit_graphics(vk::ArrayProxy<const vk::SubmitInfo> const& submit_infos, vk::Fence fence) const
@@ -83,16 +98,5 @@ void Command::submit_compute(vk::ArrayProxy<const vk::SubmitInfo> const& submit_
 void Command::submit_transfer(vk::ArrayProxy<const vk::SubmitInfo> const& submit_infos, vk::Fence fence) const
 {
 	vmc.get_transfer_queue().submit(submit_infos, fence);
-}
-
-void Command::submit(const vk::CommandBuffer& cb, const vk::Queue& queue, bool wait_idle) const
-{
-	cb.end();
-	vk::SubmitInfo submit_info;
-	submit_info.commandBufferCount = 1;
-	submit_info.pCommandBuffers = &cb;
-	queue.submit(submit_info);
-	if (wait_idle) queue.waitIdle();
-	cb.reset();
 }
 } // namespace vkte
