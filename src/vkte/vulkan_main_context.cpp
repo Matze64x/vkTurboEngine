@@ -15,16 +15,16 @@ static VKAPI_ATTR vk::Bool32 VKAPI_CALL debug_callback(vk::DebugUtilsMessageSeve
 	switch (message_severity)
 	{
 		case vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose:
-			VKTE_DEBUG("vkte: {}", callback_data->pMessage);
+			VKTE_DEBUG("Vulkan: {}", callback_data->pMessage);
 			break;
 		case vk::DebugUtilsMessageSeverityFlagBitsEXT::eInfo:
-			VKTE_INFO("vkte: {}", callback_data->pMessage);
+			VKTE_INFO("Vulkan: {}", callback_data->pMessage);
 			break;
 		case vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning:
-			VKTE_WARN("vkte: {}", callback_data->pMessage);
+			VKTE_WARN("Vulkan: {}", callback_data->pMessage);
 			break;
 		case vk::DebugUtilsMessageSeverityFlagBitsEXT::eError:
-			VKTE_ERROR("vkte: {}", callback_data->pMessage);
+			VKTE_ERROR("Vulkan: {}", callback_data->pMessage);
 			break;
 	}
 	return VK_FALSE;
