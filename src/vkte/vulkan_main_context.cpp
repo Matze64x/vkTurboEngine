@@ -56,6 +56,7 @@ void VulkanMainContext::construct(const Features& features, std::unique_ptr<Wind
 	}
 	instance.construct(instance_extensions, validation_layers, validation_feature_enables);
 	VULKAN_HPP_DEFAULT_DISPATCHER.init(instance.get());
+	setup_debug_messenger();
 	if (window) surface = window->create_surface(instance.get());
 	std::vector<const char*> device_extensions;
 	if (features.swapchain) device_extensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
@@ -79,7 +80,6 @@ void VulkanMainContext::construct(const Features& features, std::unique_ptr<Wind
 	logical_device.construct(physical_device, features.device_features, queue_families, queues);
 	VULKAN_HPP_DEFAULT_DISPATCHER.init(logical_device.get());
 	create_vma_allocator();
-	setup_debug_messenger();
 	if (window) window->show();
 }
 
