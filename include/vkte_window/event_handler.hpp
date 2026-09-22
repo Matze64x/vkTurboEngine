@@ -1,6 +1,7 @@
 #pragma once
 
 #include <SDL3/SDL.h>
+#include <string>
 #include <vector>
 
 namespace vkte
@@ -87,7 +88,10 @@ public:
 private:
 	std::vector<bool> pressed_keys;
 	std::vector<bool> released_keys;
+	std::vector<Key> key_remap;
 	void apply_key_event(Key k, uint32_t et);
 	static uint32_t get_idx(Key key);
+	Key remap_key(Key key) const;
+	void load_key_remap(const std::string& path);
 };
 } // namespace vkte
