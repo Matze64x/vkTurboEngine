@@ -58,7 +58,6 @@ public:
 	bool reload_shaders_all();
 	void destruct_components();
 
-	const vk::Pipeline& get_pipeline(PipelineHandle handle) const;
 	const vk::PipelineLayout& get_pipeline_layout(PipelineHandle handle) const;
 	const vk::DescriptorSetLayout& get_descriptor_set_layout(DescriptorSetLayoutHandle handle) const;
 	const std::vector<vk::DescriptorSet>& get_descriptor_sets(DescriptorSetsHandle handle) const;

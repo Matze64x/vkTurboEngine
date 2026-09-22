@@ -1,8 +1,6 @@
 #include "vkte/pipeline.hpp"
 
-#include "vkte/image.hpp"
-#include "vkte/shader_repository.hpp"
-#include "vkte/vkte_log.hpp"
+#include <array>
 #include "vkte/vkte_log.hpp"
 
 namespace vkte
@@ -10,178 +8,149 @@ namespace vkte
 Pipeline::Pipeline(const VulkanMainContext& vmc) : vmc(vmc)
 {}
 
+static vk::ShaderCreateInfoEXT make_shader_create_info(const ShaderRepository::CompiledShader& compiled, const Shader& shader, vk::ShaderStageFlagBits next_stage, const std::vector<vk::DescriptorSetLayout>& set_layouts, const std::vector<vk::PushConstantRange>& pcrs)
+{
+	vk::ShaderCreateInfoEXT sci;
+	sci.stage = shader.stage_flag;
+	sci.nextStage = next_stage;
+	sci.codeType = vk::ShaderCodeTypeEXT::eSpirv;
+	sci.codeSize = compiled.spirv.size() * sizeof(uint32_t);
+	sci.pCode = compiled.spirv.data();
+	sci.pName = shader.entry_point.c_str();
+	sci.setLayoutCount = set_layouts.size();
+	sci.pSetLayouts = set_layouts.data();
+	sci.pushConstantRangeCount = pcrs.size();
+	sci.pPushConstantRanges = pcrs.data();
+	sci.pSpecializationInfo = &compiled.specialization_info;
+	return sci;
+}
+
 void Pipeline::construct(const GraphicsSettings& settings, const ShaderRepository& shader_repository, const std::vector<vk::DescriptorSetLayout>& set_layouts)
 {
-	std::vector<vk::PipelineShaderStageCreateInfo> shader_stages(settings.shaders.size());
-	for (size_t i = 0; i < settings.shaders.size(); i++) shader_stages[i] = shader_repository.get_shader_stage(settings.shaders[i]);
-
-	std::vector<vk::DynamicState> dynamic_states = {vk::DynamicState::eViewport, vk::DynamicState::eScissor};
-	if (vmc.get_features().device_features.dynamic_polygon_mode) dynamic_states.push_back(vk::DynamicState::ePolygonModeEXT);
-	if (vmc.get_features().device_features.dynamic_line_width) dynamic_states.push_back(vk::DynamicState::eLineWidth);
-	vk::PipelineDynamicStateCreateInfo pdsci;
-	pdsci.dynamicStateCount = dynamic_states.size();
-	pdsci.pDynamicStates = dynamic_states.data();
-
-	vk::PipelineVertexInputStateCreateInfo pvisci;
-	pvisci.vertexBindingDescriptionCount = settings.binding_descriptions.size();
-	pvisci.pVertexBindingDescriptions = settings.binding_descriptions.data();
-	pvisci.vertexAttributeDescriptionCount = settings.attribute_description.size();
-	pvisci.pVertexAttributeDescriptions = settings.attribute_description.data();
-
-	vk::PipelineInputAssemblyStateCreateInfo piasci;
-	piasci.topology = settings.primitive_topology;
-	piasci.primitiveRestartEnable = VK_FALSE;
-
-	vk::PipelineViewportStateCreateInfo pvsci;
-	pvsci.viewportCount = 1;
-	pvsci.scissorCount = 1;
-
-	vk::PipelineRasterizationStateCreateInfo prsci;
-	prsci.depthClampEnable = VK_FALSE;
-	prsci.rasterizerDiscardEnable = VK_FALSE;
-	prsci.polygonMode = settings.polygon_mode;
-	prsci.lineWidth = 1.0f;
-	prsci.cullMode = vk::CullModeFlagBits::eNone;
-	prsci.frontFace = vk::FrontFace::eCounterClockwise;
-	prsci.depthBiasEnable = VK_FALSE;
-	prsci.depthBiasConstantFactor = 0.0f;
-	prsci.depthBiasClamp = 0.0f;
-	prsci.depthBiasSlopeFactor = 0.0f;
-
-	vk::PipelineMultisampleStateCreateInfo pmssci;
-	pmssci.sampleShadingEnable = VK_TRUE;
-	pmssci.rasterizationSamples = settings.rasterization_samples;
-	pmssci.minSampleShading = 0.4f;
-	pmssci.pSampleMask = nullptr;
-	pmssci.alphaToCoverageEnable = VK_FALSE;
-	pmssci.alphaToOneEnable = VK_FALSE;
-
-	std::vector<vk::PipelineColorBlendAttachmentState> pcbas(settings.color_formats.size());
-	for (uint32_t i = 0; i < settings.color_formats.size(); i++)
-	{
-		pcbas[i].colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
-		switch (settings.blend_mode)
-		{
-		case BlendMode::Additive:
-			pcbas[i].blendEnable = VK_TRUE;
-			pcbas[i].srcColorBlendFactor = vk::BlendFactor::eSrcAlpha;
-			pcbas[i].dstColorBlendFactor = vk::BlendFactor::eOne;
-			break;
-		case BlendMode::AlphaBlend:
-			pcbas[i].blendEnable = VK_TRUE;
-			pcbas[i].srcColorBlendFactor = vk::BlendFactor::eSrcAlpha;
-			pcbas[i].dstColorBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
-			break;
-		case BlendMode::None:
-		default:
-			pcbas[i].blendEnable = VK_FALSE;
-			pcbas[i].srcColorBlendFactor = vk::BlendFactor::eOne;
-			pcbas[i].dstColorBlendFactor = vk::BlendFactor::eZero;
-			break;
-		}
-		pcbas[i].colorBlendOp = vk::BlendOp::eAdd;
-		pcbas[i].srcAlphaBlendFactor = vk::BlendFactor::eOne;
-		pcbas[i].dstAlphaBlendFactor = vk::BlendFactor::eZero;
-		pcbas[i].alphaBlendOp = vk::BlendOp::eAdd;
-	}
-
-	vk::PipelineColorBlendStateCreateInfo pcbsci;
-	pcbsci.logicOpEnable = VK_FALSE;
-	pcbsci.logicOp = vk::LogicOp::eCopy;
-	pcbsci.attachmentCount = pcbas.size();
-	pcbsci.pAttachments = pcbas.data();
-	pcbsci.blendConstants[0] = 0.0f;
-	pcbsci.blendConstants[1] = 0.0f;
-	pcbsci.blendConstants[2] = 0.0f;
-	pcbsci.blendConstants[3] = 0.0f;
-
 	vk::PipelineLayoutCreateInfo plci;
 	plci.setLayoutCount = set_layouts.size();
 	plci.pSetLayouts = set_layouts.data();
 	plci.pushConstantRangeCount = settings.pcrs.size();
 	plci.pPushConstantRanges = settings.pcrs.data();
-
 	pipeline_layout = vmc.logical_device.get().createPipelineLayout(plci);
 
-	vk::PipelineDepthStencilStateCreateInfo pdssci;
-	pdssci.depthTestEnable = VK_TRUE;
-	if (settings.blend_mode == BlendMode::None) pdssci.depthWriteEnable = VK_TRUE;
-	else pdssci.depthWriteEnable = VK_FALSE;
-	pdssci.depthCompareOp = vk::CompareOp::eLess;
-	pdssci.depthBoundsTestEnable = VK_FALSE;
-	pdssci.minDepthBounds = 0.0f;
-	pdssci.maxDepthBounds = 1.0f;
-	pdssci.stencilTestEnable = VK_FALSE;
-	pdssci.front = vk::StencilOpState{};
-	pdssci.back = vk::StencilOpState{};
+	stages.clear();
+	for (const Shader& shader : settings.shaders) stages.push_back(shader.stage_flag);
 
-	vk::PipelineRenderingCreateInfo prci;
-	prci.colorAttachmentCount = settings.color_formats.size();
-	prci.pColorAttachmentFormats = settings.color_formats.data();
-	prci.depthAttachmentFormat = settings.depth_format;
-	prci.stencilAttachmentFormat = has_stencil(settings.depth_format) ? settings.depth_format : vk::Format::eUndefined;
+	std::vector<vk::ShaderCreateInfoEXT> create_infos;
+	create_infos.reserve(settings.shaders.size());
+	for (size_t i = 0; i < settings.shaders.size(); i++)
+	{
+		const vk::ShaderStageFlagBits next_stage = i + 1 < settings.shaders.size() ? settings.shaders[i + 1].stage_flag : vk::ShaderStageFlagBits{};
+		create_infos.push_back(make_shader_create_info(shader_repository.get_compiled_shader(settings.shaders[i]), settings.shaders[i], next_stage, set_layouts, settings.pcrs));
+	}
+	vk::ResultValue<std::vector<vk::ShaderEXT>> shaders_result = vmc.logical_device.get().createShadersEXT(create_infos);
+	VKTE_CHECK(shaders_result.result, "Failed to create shader objects!");
+	shader_objects = std::move(shaders_result.value);
 
-	vk::GraphicsPipelineCreateInfo gpci;
-	gpci.pNext = &prci;
-	gpci.stageCount = shader_stages.size();
-	gpci.pStages = shader_stages.data();
-	gpci.pVertexInputState = &pvisci;
-	gpci.pInputAssemblyState = &piasci;
-	gpci.pViewportState = &pvsci;
-	gpci.pRasterizationState = &prsci;
-	gpci.pMultisampleState = &pmssci;
-	gpci.pDepthStencilState = &pdssci;
-	gpci.pColorBlendState = &pcbsci;
-	gpci.pDynamicState = &pdsci;
-	gpci.layout = pipeline_layout;
-	gpci.basePipelineHandle = VK_NULL_HANDLE;
-	gpci.basePipelineIndex = -1;
+	GraphicsState state;
+	for (const vk::VertexInputBindingDescription& binding : settings.binding_descriptions) state.vertex_bindings.emplace_back(binding.binding, binding.stride, binding.inputRate, 1);
+	for (const vk::VertexInputAttributeDescription& attribute : settings.attribute_description) state.vertex_attributes.emplace_back(attribute.location, attribute.binding, attribute.format, attribute.offset);
 
-	vk::ResultValue<vk::Pipeline> pipeline_result_value = vmc.logical_device.get().createGraphicsPipeline(VK_NULL_HANDLE, gpci);
-	VKTE_CHECK(pipeline_result_value.result, "Failed to create pipeline!");
-	pipeline = pipeline_result_value.value;
+	state.primitive_topology = settings.primitive_topology;
+	state.polygon_mode = settings.polygon_mode;
+	state.rasterization_samples = settings.rasterization_samples;
+	state.depth_write_enable = settings.blend_mode == BlendMode::None;
+
+	vk::ColorBlendEquationEXT equation;
+	vk::Bool32 blend_enable = VK_FALSE;
+	switch (settings.blend_mode)
+	{
+	case BlendMode::Additive:
+		blend_enable = VK_TRUE;
+		equation.srcColorBlendFactor = vk::BlendFactor::eSrcAlpha;
+		equation.dstColorBlendFactor = vk::BlendFactor::eOne;
+		break;
+	case BlendMode::AlphaBlend:
+		blend_enable = VK_TRUE;
+		equation.srcColorBlendFactor = vk::BlendFactor::eSrcAlpha;
+		equation.dstColorBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
+		break;
+	case BlendMode::None:
+	default:
+		equation.srcColorBlendFactor = vk::BlendFactor::eOne;
+		equation.dstColorBlendFactor = vk::BlendFactor::eZero;
+		break;
+	}
+	equation.colorBlendOp = vk::BlendOp::eAdd;
+	equation.srcAlphaBlendFactor = vk::BlendFactor::eOne;
+	equation.dstAlphaBlendFactor = vk::BlendFactor::eZero;
+	equation.alphaBlendOp = vk::BlendOp::eAdd;
+
+	const uint32_t attachment_count = uint32_t(settings.color_formats.size());
+	state.color_blend_enable.assign(attachment_count, blend_enable);
+	state.color_blend_equation.assign(attachment_count, equation);
+	state.color_write_mask.assign(attachment_count, vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA);
+	graphics_state = std::move(state);
+
 	bind_point = vk::PipelineBindPoint::eGraphics;
 }
 
 void Pipeline::construct(const ComputeSettings& settings, const ShaderRepository& shader_repository, const std::vector<vk::DescriptorSetLayout>& set_layouts)
 {
-	vk::PipelineShaderStageCreateInfo shader_stage = shader_repository.get_shader_stage(settings.shader);
-
-	vk::PushConstantRange pcr;
-	pcr.offset = 0;
-	pcr.size = settings.push_constant_byte_size;
-	pcr.stageFlags = vk::ShaderStageFlagBits::eCompute;
+	std::vector<vk::PushConstantRange> pcrs;
+	if (settings.push_constant_byte_size > 0) pcrs.emplace_back(vk::ShaderStageFlagBits::eCompute, 0, settings.push_constant_byte_size);
 
 	vk::PipelineLayoutCreateInfo plci;
 	plci.setLayoutCount = set_layouts.size();
 	plci.pSetLayouts = set_layouts.data();
-	if (settings.push_constant_byte_size > 0)
-	{
-		plci.pushConstantRangeCount = 1;
-		plci.pPushConstantRanges = &pcr;
-	}
-
+	plci.pushConstantRangeCount = pcrs.size();
+	plci.pPushConstantRanges = pcrs.data();
 	pipeline_layout = vmc.logical_device.get().createPipelineLayout(plci);
 
-	vk::ComputePipelineCreateInfo cpci;
-	cpci.stage = shader_stage;
-	cpci.layout = pipeline_layout;
+	stages = {vk::ShaderStageFlagBits::eCompute};
+	const vk::ShaderCreateInfoEXT create_info = make_shader_create_info(shader_repository.get_compiled_shader(settings.shader), settings.shader, vk::ShaderStageFlagBits{}, set_layouts, pcrs);
+	vk::ResultValue<std::vector<vk::ShaderEXT>> shaders_result = vmc.logical_device.get().createShadersEXT(create_info);
+	VKTE_CHECK(shaders_result.result, "Failed to create shader object!");
+	shader_objects = std::move(shaders_result.value);
+	graphics_state.reset();
 
-	vk::ResultValue<vk::Pipeline> compute_pipeline_result_value = vmc.logical_device.get().createComputePipeline(VK_NULL_HANDLE, cpci);
-	VKTE_CHECK(compute_pipeline_result_value.result, "Failed to create compute pipeline!");
-	pipeline = compute_pipeline_result_value.value;
 	bind_point = vk::PipelineBindPoint::eCompute;
 }
 
 void Pipeline::destruct()
 {
-	vmc.logical_device.get().destroyPipeline(pipeline);
+	for (const vk::ShaderEXT& shader : shader_objects) vmc.logical_device.get().destroyShaderEXT(shader);
+	shader_objects.clear();
 	vmc.logical_device.get().destroyPipelineLayout(pipeline_layout);
 }
 
-const vk::Pipeline& Pipeline::get() const
+void Pipeline::bind(vk::CommandBuffer cb) const
 {
-	return pipeline;
+	cb.bindShadersEXT(stages, shader_objects);
+	if (!graphics_state) return;
+	const GraphicsState& state = *graphics_state;
+
+	// fixed-function state that never varies across pipelines in this engine
+	cb.setCullMode(vk::CullModeFlagBits::eNone);
+	cb.setFrontFace(vk::FrontFace::eCounterClockwise);
+	cb.setDepthClampEnableEXT(VK_FALSE);
+	cb.setRasterizerDiscardEnable(VK_FALSE);
+	cb.setDepthBiasEnable(VK_FALSE);
+	cb.setPrimitiveRestartEnable(VK_FALSE);
+	cb.setDepthTestEnable(VK_TRUE);
+	cb.setDepthCompareOp(vk::CompareOp::eLess);
+	cb.setDepthBoundsTestEnable(VK_FALSE);
+	cb.setStencilTestEnable(VK_FALSE);
+	cb.setAlphaToCoverageEnableEXT(VK_FALSE);
+	const uint32_t sample_mask_word_count = (uint32_t(state.rasterization_samples) + 31) / 32;
+	const std::array<uint32_t, 2> sample_mask{~0u, ~0u};
+	cb.setSampleMaskEXT(state.rasterization_samples, vk::ArrayProxy<const uint32_t>(sample_mask_word_count, sample_mask.data()));
+
+	// per-pipeline state
+	cb.setVertexInputEXT(state.vertex_bindings, state.vertex_attributes);
+	cb.setPrimitiveTopology(state.primitive_topology);
+	cb.setPolygonModeEXT(state.polygon_mode);
+	cb.setRasterizationSamplesEXT(state.rasterization_samples);
+	cb.setDepthWriteEnable(state.depth_write_enable);
+	cb.setColorBlendEnableEXT(0, state.color_blend_enable);
+	cb.setColorBlendEquationEXT(0, state.color_blend_equation);
+	cb.setColorWriteMaskEXT(0, state.color_write_mask);
 }
 
 const vk::PipelineLayout& Pipeline::get_layout() const

@@ -155,8 +155,7 @@ void ShaderRepository::construct(const vk::Device& device, const std::string& sh
 
 void ShaderRepository::destruct()
 {
-	for (const std::pair<const std::string, vk::ShaderModule>& entry : modules) device.destroyShaderModule(entry.second);
-	modules.clear();
+	spirv_code.clear();
 }
 
 bool ShaderRepository::compile_all(const std::vector<const Shader*>& shaders)
@@ -182,7 +181,7 @@ bool ShaderRepository::recompile_all()
 	{
 		bool success = false;
 		std::string key;
-		vk::ShaderModule module;
+		std::vector<uint32_t> spirv;
 	};
 
 	std::vector<std::future<CompileResult>> futures;
@@ -197,10 +196,9 @@ bool ShaderRepository::recompile_all()
 			Slang::ComPtr<slang::IBlob> spirv = compile_to_spirv(*shader, *session, shader_root_dir);
 			if (!spirv) return {};
 
-			vk::ShaderModuleCreateInfo smci;
-			smci.codeSize = spirv->getBufferSize();
-			smci.pCode = static_cast<const uint32_t*>(spirv->getBufferPointer());
-			return {true, shader_key(*shader), device.createShaderModule(smci)};
+			const uint32_t* code = static_cast<const uint32_t*>(spirv->getBufferPointer());
+			const size_t word_count = spirv->getBufferSize() / sizeof(uint32_t);
+			return {true, shader_key(*shader), std::vector<uint32_t>(code, code + word_count)};
 		}));
 	}
 
@@ -218,27 +216,17 @@ bool ShaderRepository::recompile_all()
 		results.push_back(std::move(result));
 	}
 
-	if (!success)
-	{
-		for (const CompileResult& result : results) device.destroyShaderModule(result.module);
-		return false;
-	}
+	if (!success) return false;
 
 	destruct();
-	for (CompileResult& result : results) modules[std::move(result.key)] = result.module;
+	for (CompileResult& result : results) spirv_code[std::move(result.key)] = std::move(result.spirv);
 	return true;
 }
 
-vk::PipelineShaderStageCreateInfo ShaderRepository::get_shader_stage(const Shader& shader) const
+ShaderRepository::CompiledShader ShaderRepository::get_compiled_shader(const Shader& shader) const
 {
-	const std::unordered_map<std::string, vk::ShaderModule>::const_iterator it = modules.find(shader_key(shader));
-	VKTE_ASSERT(it != modules.end(), "vkte: Shader \"" + shader.name + "\" was never compiled");
-
-	vk::PipelineShaderStageCreateInfo pssci;
-	pssci.module = it->second;
-	pssci.stage = shader.stage_flag;
-	pssci.pName = shader.entry_point.c_str();
-	pssci.pSpecializationInfo = &shaders.at(&shader);
-	return pssci;
+	const std::unordered_map<std::string, std::vector<uint32_t>>::const_iterator it = spirv_code.find(shader_key(shader));
+	VKTE_ASSERT(it != spirv_code.end(), "vkte: Shader \"" + shader.name + "\" was never compiled");
+	return {it->second, shaders.at(&shader)};
 }
 } // namespace vkte

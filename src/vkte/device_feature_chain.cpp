@@ -85,7 +85,21 @@ DeviceFeatureChain build_required_feature_chain(const DeviceFeatures& features)
 	chain.get<vk::PhysicalDeviceAccelerationStructureFeaturesKHR>().accelerationStructure = features.ray_tracing;
 	chain.get<vk::PhysicalDeviceRayQueryFeaturesKHR>().rayQuery = features.ray_tracing;
 	chain.get<vk::PhysicalDeviceRayTracingPipelineFeaturesKHR>().rayTracingPipeline = features.ray_tracing;
-	chain.get<vk::PhysicalDeviceExtendedDynamicState3FeaturesEXT>().extendedDynamicState3PolygonMode = features.dynamic_polygon_mode;
+
+	chain.get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState = VK_TRUE;
+	vk::PhysicalDeviceExtendedDynamicState2FeaturesEXT& dynamic_state2 = chain.get<vk::PhysicalDeviceExtendedDynamicState2FeaturesEXT>();
+	dynamic_state2.extendedDynamicState2 = VK_TRUE;
+	vk::PhysicalDeviceExtendedDynamicState3FeaturesEXT& dynamic_state3 = chain.get<vk::PhysicalDeviceExtendedDynamicState3FeaturesEXT>();
+	dynamic_state3.extendedDynamicState3PolygonMode = VK_TRUE;
+	dynamic_state3.extendedDynamicState3RasterizationSamples = VK_TRUE;
+	dynamic_state3.extendedDynamicState3SampleMask = VK_TRUE;
+	dynamic_state3.extendedDynamicState3AlphaToCoverageEnable = VK_TRUE;
+	dynamic_state3.extendedDynamicState3ColorBlendEnable = VK_TRUE;
+	dynamic_state3.extendedDynamicState3ColorBlendEquation = VK_TRUE;
+	dynamic_state3.extendedDynamicState3ColorWriteMask = VK_TRUE;
+	dynamic_state3.extendedDynamicState3DepthClampEnable = VK_TRUE;
+	chain.get<vk::PhysicalDeviceVertexInputDynamicStateFeaturesEXT>().vertexInputDynamicState = VK_TRUE;
+	chain.get<vk::PhysicalDeviceShaderObjectFeaturesEXT>().shaderObject = VK_TRUE;
 
 	vk::PhysicalDeviceShaderAtomicFloatFeaturesEXT& atomic_float = chain.get<vk::PhysicalDeviceShaderAtomicFloatFeaturesEXT>();
 	atomic_float.shaderBufferFloat32Atomics = features.shader_atomic_float;

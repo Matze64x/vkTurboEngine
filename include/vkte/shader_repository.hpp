@@ -30,14 +30,20 @@ public:
 	void destruct();
 	bool compile_all(const std::vector<const Shader*>& shaders);
 	bool recompile_all();
-	vk::PipelineShaderStageCreateInfo get_shader_stage(const Shader& shader) const;
+
+	struct CompiledShader
+	{
+		const std::vector<uint32_t>& spirv;
+		const vk::SpecializationInfo& specialization_info;
+	};
+	CompiledShader get_compiled_shader(const Shader& shader) const;
 
 private:
 	vk::Device device;
 	std::string shader_root_dir;
 	// one Slang global session per ThreadManager worker, created lazily by whichever worker first needs it
 	std::vector<Slang::ComPtr<slang::IGlobalSession>> global_sessions;
-	std::unordered_map<std::string, vk::ShaderModule> modules;
+	std::unordered_map<std::string, std::vector<uint32_t>> spirv_code;
 	std::unordered_map<const Shader*, vk::SpecializationInfo> shaders;
 	ThreadManager& thread_manager;
 };

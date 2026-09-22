@@ -58,12 +58,6 @@ void Engine::register_component(Component& component)
 	components.push_back(&component);
 }
 
-const vk::Pipeline& Engine::get_pipeline(PipelineHandle handle) const
-{
-	VKTE_ASSERT(handle.valid() && handle.id < pipelines.size(), "vkte: Invalid pipeline handle!");
-	return pipelines.at(handle.id).get();
-}
-
 const vk::PipelineLayout& Engine::get_pipeline_layout(PipelineHandle handle) const
 {
 	VKTE_ASSERT(handle.valid() && handle.id < pipelines.size(), "vkte: Invalid pipeline handle!");
@@ -86,7 +80,7 @@ void Engine::bind(vk::CommandBuffer cb, PipelineHandle pipeline, DescriptorSetsH
 {
 	VKTE_ASSERT(pipeline.valid() && pipeline.id < pipelines.size(), "vkte: Invalid pipeline handle!");
 	const Pipeline& p = pipelines.at(pipeline.id);
-	cb.bindPipeline(p.get_bind_point(), p.get());
+	p.bind(cb);
 	memory_manager.bind_bindless_set(cb, p.get_bind_point(), p.get_layout(), current_frame);
 	if (sets.valid()) cb.bindDescriptorSets(p.get_bind_point(), p.get_layout(), 1, get_descriptor_sets(sets)[descriptor_set_index], {});
 }
@@ -168,7 +162,10 @@ void Engine::build_pipelines()
 		if (entry.graphics_settings) pipeline.construct(*entry.graphics_settings, shader_repository, set_layouts);
 		else if (entry.compute_settings) pipeline.construct(*entry.compute_settings, shader_repository, set_layouts);
 		else VKTE_THROW("vkte: Pipeline with no valid settings!");
-		set_debug_name(vk::ObjectType::ePipeline, uint64_t(static_cast<vk::Pipeline::CType>(pipeline.get())), std::format("{}_pipeline_{}", owner_name(entry.owner), i));
+		for (size_t s = 0; s < pipeline.shader_count(); s++)
+		{
+			set_debug_name(vk::ObjectType::eShaderEXT, uint64_t(static_cast<vk::ShaderEXT::CType>(pipeline.get_shader(s))), std::format("{}_pipeline_{}_{}", owner_name(entry.owner), i, s));
+		}
 	}
 }
 
