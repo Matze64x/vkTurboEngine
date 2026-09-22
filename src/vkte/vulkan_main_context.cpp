@@ -137,7 +137,7 @@ void VulkanMainContext::create_vma_allocator()
 void VulkanMainContext::setup_debug_messenger()
 {
 	vk::DebugUtilsMessengerCreateInfoEXT dumci;
-	dumci.messageSeverity = vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose | vk::DebugUtilsMessageSeverityFlagBitsEXT::eInfo | vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning | vk::DebugUtilsMessageSeverityFlagBitsEXT::eError;
+	dumci.messageSeverity = features.message_severity;
 	dumci.messageType = vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral | vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation | vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance;
 	dumci.pfnUserCallback = debug_callback;
 	debug_messenger = instance.get().createDebugUtilsMessengerEXT(dumci, nullptr, VULKAN_HPP_DEFAULT_DISPATCHER);

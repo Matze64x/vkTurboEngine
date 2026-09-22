@@ -18,6 +18,7 @@ struct Features
 	bool gpu_assisted_validation = false;
 	bool synchronization_validation = false;
 	bool best_practices_validation = false;
+	vk::DebugUtilsMessageSeverityFlagsEXT message_severity = vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning | vk::DebugUtilsMessageSeverityFlagBitsEXT::eError;
 	bool swapchain = false;
 	DeviceFeatures device_features;
 };
