@@ -14,6 +14,10 @@ class Window;
 struct Features
 {
 	bool khronos_validation = false;
+	// only take effect when khronos_validation is also set
+	bool gpu_assisted_validation = false;
+	bool synchronization_validation = false;
+	bool best_practices_validation = false;
 	bool swapchain = false;
 	DeviceFeatures device_features;
 };

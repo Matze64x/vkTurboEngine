@@ -9,7 +9,7 @@ class Instance
 {
 public:
 	Instance() = default;
-	void construct(std::vector<const char*> required_extensions, std::vector<const char*> validation_layers);
+	void construct(std::vector<const char*> required_extensions, std::vector<const char*> validation_layers, std::vector<vk::ValidationFeatureEnableEXT> validation_feature_enables = {});
 	void destruct();
 	const vk::Instance& get() const;
 	std::vector<vk::PhysicalDevice> get_physical_devices() const;

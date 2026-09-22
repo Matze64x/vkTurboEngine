@@ -46,8 +46,15 @@ void VulkanMainContext::construct(const Features& features, std::unique_ptr<Wind
 		instance_extensions.assign(extensions_sdl, extensions_sdl + extension_count);
 	}
 	std::vector<const char*> validation_layers;
-	if (features.khronos_validation) validation_layers.push_back("VK_LAYER_KHRONOS_validation");
-	instance.construct(instance_extensions, validation_layers);
+	std::vector<vk::ValidationFeatureEnableEXT> validation_feature_enables;
+	if (features.khronos_validation)
+	{
+		validation_layers.push_back("VK_LAYER_KHRONOS_validation");
+		if (features.gpu_assisted_validation) validation_feature_enables.push_back(vk::ValidationFeatureEnableEXT::eGpuAssisted);
+		if (features.synchronization_validation) validation_feature_enables.push_back(vk::ValidationFeatureEnableEXT::eSynchronizationValidation);
+		if (features.best_practices_validation) validation_feature_enables.push_back(vk::ValidationFeatureEnableEXT::eBestPractices);
+	}
+	instance.construct(instance_extensions, validation_layers, validation_feature_enables);
 	VULKAN_HPP_DEFAULT_DISPATCHER.init(instance.get());
 	if (window) surface = window->create_surface(instance.get());
 	std::vector<const char*> device_extensions;
