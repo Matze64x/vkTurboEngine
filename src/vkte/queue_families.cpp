@@ -16,22 +16,22 @@ void QueueFamilies::construct(vk::PhysicalDevice physical_device, vk::SurfaceKHR
 std::vector<uint32_t> QueueFamilies::get(Queues queues) const
 {
 	std::vector<uint32_t> queue_indices;
-	if (queues & QueueFamilyFlags::Graphics)
+	if ((queues & QueueFamilyFlags::Graphics) && indices.graphics != -1)
 	{
 		queue_indices.push_back(indices.graphics);
 		queues &= ~graphics;
 	}
-	if (queues & QueueFamilyFlags::Compute)
+	if ((queues & QueueFamilyFlags::Compute) && indices.compute != -1)
 	{
 		queue_indices.push_back(indices.compute);
 		queues &= ~compute;
 	}
-	if (queues & QueueFamilyFlags::Transfer)
+	if ((queues & QueueFamilyFlags::Transfer) && indices.transfer != -1)
 	{
 		queue_indices.push_back(indices.transfer);
 		queues &= ~transfer;
 	}
-	if (queues & QueueFamilyFlags::Present)
+	if ((queues & QueueFamilyFlags::Present) && indices.present != -1)
 	{
 		queue_indices.push_back(indices.present);
 		queues &= ~present;
@@ -101,7 +101,7 @@ void QueueFamilies::get_queue_families(vk::PhysicalDevice& physical_device, cons
 			indices.transfer = i;
 		}
 	}
-	VKTE_ASSERT(indices.graphics != -1 && indices.compute != -1 && indices.transfer != -1 && indices.present != -1, "vkte: One queue family could not be satisfied!");
+	VKTE_ASSERT(indices.graphics != -1 && indices.compute != -1 && indices.transfer != -1 && (!surface.has_value() || indices.present != -1), "vkte: One queue family could not be satisfied!");
 	if (indices.graphics == indices.compute)
 	{
 		graphics |= compute;

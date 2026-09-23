@@ -86,7 +86,7 @@ void VulkanMainContext::construct(const Features& features, std::unique_ptr<Wind
 void VulkanMainContext::destruct()
 {
 	vmaDestroyAllocator(va);
-	instance.get().destroySurfaceKHR(surface);
+	if (surface) instance.get().destroySurfaceKHR(surface);
 	logical_device.destruct();
 	instance.get().destroyDebugUtilsMessengerEXT(debug_messenger, nullptr, VULKAN_HPP_DEFAULT_DISPATCHER);
 	instance.destruct();
