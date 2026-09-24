@@ -95,6 +95,12 @@ public:
 	vk::DeviceAddress get_device_address();
 	VmaAllocationInfo get_allocation_info() const;
 
+	template<class T>
+	std::span<T> get_mapped_data()
+	{
+		return std::span<T>(static_cast<T*>(get_mapped_data_bytes()), byte_size / sizeof(T));
+	}
+
 	void* pNext = nullptr;
 
 private:
@@ -104,6 +110,7 @@ private:
 		BufferToHost,
 	};
 
+	void* get_mapped_data_bytes();
 	void apply_memory_operation(std::size_t offset, std::size_t byte_count, TransferDirection direction, const std::function<void(void*)>& host_op);
 
 	const VulkanMainContext& vmc;

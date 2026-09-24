@@ -138,4 +138,11 @@ VmaAllocationInfo Buffer::get_allocation_info() const
 	vmaGetAllocationInfo(vmc.va, vmaa, &alloc_info);
 	return alloc_info;
 }
+
+void* Buffer::get_mapped_data_bytes()
+{
+	void* mapped_data = get_allocation_info().pMappedData;
+	VKTE_ASSERT(mapped_data != nullptr, "vkte: Buffer is not persistently mapped");
+	return mapped_data;
+}
 } // namespace vkte
