@@ -23,7 +23,15 @@ public:
 		std::vector<uint32_t> index_counts = {};
 		bool dynamic = false;
 	};
+	struct AABBBLASData
+	{
+		BufferHandle aabb_buffer_id;
+		uint32_t aabb_offset = 0;
+		uint32_t aabb_count = 1;
+		bool dynamic = false;
+	};
 	uint32_t add_blas(const std::string& buffer_name, const BLASData& blas_data);
+	uint32_t add_aabb_blas(const std::string& buffer_name, const AABBBLASData& blas_data);
 	void update_blas(uint32_t blas_idx);
 	uint32_t add_instance(uint32_t blas_idx, const vk::TransformMatrixKHR& M, uint32_t custom_index, uint8_t mask = 0xFF);
 	void update_instance(uint32_t instance_idx, const vk::TransformMatrixKHR& M);
@@ -33,7 +41,7 @@ public:
 
 private:
 	struct BLAS {
-		std::vector<uint32_t> num_triangles;
+		std::vector<uint32_t> primitive_counts;
 		std::vector<vk::AccelerationStructureBuildRangeInfoKHR> asbris;
 		std::vector<vk::AccelerationStructureGeometryKHR> asgs;
 		vk::AccelerationStructureBuildGeometryInfoKHR asbgi;
@@ -62,6 +70,7 @@ private:
 	};
 
 	ScratchBuffer create_scratch_buffer(const std::string& buffer_name, vk::DeviceSize build_scratch_size);
+	void create_blas(const std::string& buffer_name, uint32_t blas_idx);
 
 	friend class Engine;
 	AccelerationStructureBuilder(const VulkanMainContext& vmc, MemoryManager& memory_manager);

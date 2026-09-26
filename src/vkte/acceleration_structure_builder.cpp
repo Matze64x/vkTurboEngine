@@ -76,7 +76,7 @@ uint32_t AccelerationStructureBuilder::add_blas(const std::string& buffer_name, 
 		asbri.firstVertex = 0;
 		asbri.transformOffset = 0;
 		blas.asbris.push_back(asbri);
-		blas.num_triangles.push_back(asbri.primitiveCount);
+		blas.primitive_counts.push_back(asbri.primitiveCount);
 
 		vk::AccelerationStructureGeometryKHR asg;
 		asg.flags = vk::GeometryFlagBitsKHR::eOpaque;
@@ -92,13 +92,47 @@ uint32_t AccelerationStructureBuilder::add_blas(const std::string& buffer_name, 
 		blas.asgs.push_back(asg);
 	}
 
+	create_blas(buffer_name, blas_idx);
+	return blas_idx;
+}
+
+uint32_t AccelerationStructureBuilder::add_aabb_blas(const std::string& buffer_name, const AABBBLASData& blas_data)
+{
+	Buffer& aabb_buffer = memory_manager.get_buffer(blas_data.aabb_buffer_id);
+
+	const uint32_t blas_idx = bottom_level_as.size();
+	bottom_level_as.emplace_back();
+	BLAS& blas = bottom_level_as[blas_idx];
+	blas.dynamic = blas_data.dynamic;
+
+	vk::AccelerationStructureBuildRangeInfoKHR asbri;
+	asbri.primitiveCount = blas_data.aabb_count;
+	asbri.primitiveOffset = sizeof(vk::AabbPositionsKHR) * blas_data.aabb_offset;
+	asbri.firstVertex = 0;
+	asbri.transformOffset = 0;
+	blas.asbris.push_back(asbri);
+	blas.primitive_counts.push_back(asbri.primitiveCount);
+
+	vk::AccelerationStructureGeometryKHR asg;
+	asg.flags = vk::GeometryFlagBitsKHR::eOpaque;
+	asg.geometryType = vk::GeometryTypeKHR::eAabbs;
+	asg.geometry.aabbs = vk::AccelerationStructureGeometryAabbsDataKHR(vk::DeviceOrHostAddressConstKHR(aabb_buffer.get_device_address()), sizeof(vk::AabbPositionsKHR));
+	blas.asgs.push_back(asg);
+
+	create_blas(buffer_name, blas_idx);
+	return blas_idx;
+}
+
+void AccelerationStructureBuilder::create_blas(const std::string& buffer_name, uint32_t blas_idx)
+{
+	BLAS& blas = bottom_level_as[blas_idx];
 	blas.asbgi.type = vk::AccelerationStructureTypeKHR::eBottomLevel;
 	blas.asbgi.flags = vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace;
 	blas.asbgi.mode = vk::BuildAccelerationStructureModeKHR::eBuild;
 	blas.asbgi.geometryCount = blas.asgs.size();
 	blas.asbgi.pGeometries = blas.asgs.data();
 
-	vk::AccelerationStructureBuildSizesInfoKHR asbsi = vmc.logical_device.get().getAccelerationStructureBuildSizesKHR(vk::AccelerationStructureBuildTypeKHR::eDevice, blas.asbgi, blas.num_triangles);
+	vk::AccelerationStructureBuildSizesInfoKHR asbsi = vmc.logical_device.get().getAccelerationStructureBuildSizesKHR(vk::AccelerationStructureBuildTypeKHR::eDevice, blas.asbgi, blas.primitive_counts);
 	Buffer::Settings blas_buffer_settings;
 	blas_buffer_settings.byte_size = asbsi.accelerationStructureSize;
 	blas_buffer_settings.usage_flags = vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR;
@@ -123,8 +157,6 @@ uint32_t AccelerationStructureBuilder::add_blas(const std::string& buffer_name, 
 	blas.asbgi.scratchData.deviceAddress = scratch.device_address;
 
 	update_blas(blas_idx);
-
-	return blas_idx;
 }
 
 void AccelerationStructureBuilder::update_blas(uint32_t blas_idx)
