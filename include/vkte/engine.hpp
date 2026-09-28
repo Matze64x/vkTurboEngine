@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <memory>
 #include <string>
 #include <vector>
@@ -30,7 +31,7 @@ struct EngineSettings
 	std::string window_title = "vkte";
 	uint32_t window_width = 1920;
 	uint32_t window_height = 1080;
-	bool vsync = true;
+	PresentSettings present_settings;
 };
 
 struct FrameSettings
@@ -90,11 +91,11 @@ public:
 	void destroy(AccelerationStructureBuilderHandle handle);
 	AccelerationStructureBuilder& get(AccelerationStructureBuilderHandle handle) const;
 
-	void resize(bool vsync);
+	void resize(const PresentSettings& present_settings);
 	Swapchain& get_swapchain();
 	UI& get_ui();
 	vk::ResultValue<uint32_t> acquire_next_image(vk::Semaphore semaphore) const;
-	vk::Result present(const vk::PresentInfoKHR& present_info) const;
+	vk::Result present(const vk::PresentInfoKHR& present_info);
 
 private:
 	uint32_t current_frame = 0;
@@ -117,6 +118,8 @@ private:
 	std::vector<std::unique_ptr<DeviceTimer>> device_timers;
 	std::vector<std::unique_ptr<AccelerationStructureBuilder>> acceleration_structure_builders;
 	std::unique_ptr<Swapchain> swapchain;
+	bool limit_presents = false;
+	std::chrono::steady_clock::time_point next_present_time;
 	std::unique_ptr<UI> ui;
 
 	void build_descriptor_set_layouts();

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <deque>
+#include <thread>
 #include <unordered_map>
 #include "vkte/global_constants.hpp"
 #include "vkte/vkte_log.hpp"
@@ -21,9 +22,10 @@ Engine::Engine(const EngineSettings& settings) : command(vmc), storage(vmc, comm
 	shader_repository.construct(vmc.logical_device.get(), settings.shader_root_dir);
 	if (window)
 	{
-		SwapchainSettings swapchain_settings = Swapchain::choose_settings(vmc.physical_device, *window, vmc.surface, settings.vsync);
+		SwapchainSettings swapchain_settings = Swapchain::choose_settings(vmc.physical_device, *window, vmc.surface, settings.present_settings.mode);
 		swapchain = std::make_unique<Swapchain>();
 		swapchain->construct(vmc.logical_device.get(), vmc.queue_families, swapchain_settings, command, storage);
+		limit_presents = settings.present_settings.limit_to_refresh_rate && swapchain_settings.present_mode != vk::PresentModeKHR::eFifo;
 		ui = std::make_unique<UI>();
 		ui->construct(vmc, *swapchain, window->get());
 	}
@@ -261,12 +263,13 @@ uint32_t Engine::get_queue_family_index(QueueFamilyFlags queue) const
 	return vmc.queue_families.get(queue);
 }
 
-void Engine::resize(bool vsync)
+void Engine::resize(const PresentSettings& present_settings)
 {
 	VKTE_ASSERT(window && swapchain, "vkte: Engine has no window; EngineSettings::enable_window was false!");
 	swapchain->destruct(vmc.logical_device.get(), storage);
-	SwapchainSettings swapchain_settings = Swapchain::choose_settings(vmc.physical_device, *window, vmc.surface, vsync);
+	SwapchainSettings swapchain_settings = Swapchain::choose_settings(vmc.physical_device, *window, vmc.surface, present_settings.mode);
 	swapchain->construct(vmc.logical_device.get(), vmc.queue_families, swapchain_settings, command, storage);
+	limit_presents = present_settings.limit_to_refresh_rate && swapchain_settings.present_mode != vk::PresentModeKHR::eFifo;
 }
 
 vk::ResultValue<uint32_t> Engine::acquire_next_image(vk::Semaphore semaphore) const
@@ -275,9 +278,16 @@ vk::ResultValue<uint32_t> Engine::acquire_next_image(vk::Semaphore semaphore) co
 	return vmc.logical_device.get().acquireNextImageKHR(swapchain->get(), uint64_t(-1), semaphore);
 }
 
-vk::Result Engine::present(const vk::PresentInfoKHR& present_info) const
+vk::Result Engine::present(const vk::PresentInfoKHR& present_info)
 {
 	VKTE_ASSERT(window, "vkte: Engine has no window; EngineSettings::enable_window was false!");
+	if (limit_presents)
+	{
+		const float refresh_rate = window->get_refresh_rate();
+		const std::chrono::steady_clock::duration refresh_interval = std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<float>(1.0f / (refresh_rate > 0.0f ? refresh_rate : 60.0f)));
+		std::this_thread::sleep_until(next_present_time);
+		next_present_time = std::max(next_present_time, std::chrono::steady_clock::now() - refresh_interval) + refresh_interval;
+	}
 	return vmc.get_present_queue().presentKHR(present_info);
 }
 

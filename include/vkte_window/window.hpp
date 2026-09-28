@@ -19,6 +19,7 @@ public:
 	bool get_relative_mouse_mode() const;
 	void warp_mouse(float x, float y);
 	vk::Extent2D get_pixel_size() const;
+	float get_refresh_rate() const;
 
 private:
 	friend class VulkanMainContext;

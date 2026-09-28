@@ -11,6 +11,14 @@ namespace vkte
 class Engine;
 class Window;
 
+struct PresentSettings
+{
+	// falls back to Fifo if the surface does not support it
+	vk::PresentModeKHR mode = vk::PresentModeKHR::eFifo;
+	// limits presents in modes other than FIFO to one per refresh interval of the window's display
+	bool limit_to_refresh_rate = false;
+};
+
 struct SwapchainSettings
 {
 	vk::SurfaceKHR surface;
@@ -36,7 +44,7 @@ public:
 
 private:
 	friend class Engine;
-	static SwapchainSettings choose_settings(const PhysicalDevice& physical_device, const Window& window, vk::SurfaceKHR surface, bool vsync);
+	static SwapchainSettings choose_settings(const PhysicalDevice& physical_device, const Window& window, vk::SurfaceKHR surface, vk::PresentModeKHR present_mode);
 	void construct(const vk::Device& device, const QueueFamilies& queue_families, const SwapchainSettings& settings, Command& command, Storage& storage);
 	void destruct(const vk::Device& device, Storage& storage);
 

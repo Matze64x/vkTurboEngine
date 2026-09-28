@@ -70,4 +70,10 @@ vk::Extent2D Window::get_pixel_size() const
 	SDL_GetWindowSizeInPixels(window, &width, &height);
 	return vk::Extent2D(width > 0 ? static_cast<uint32_t>(width) : 0u, height > 0 ? static_cast<uint32_t>(height) : 0u);
 }
+
+float Window::get_refresh_rate() const
+{
+	const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(window));
+	return mode ? mode->refresh_rate : 0.0f;
+}
 } // namespace vkte

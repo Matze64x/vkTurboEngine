@@ -132,7 +132,7 @@ void Swapchain::create_images(const vk::Device& device)
 	}
 }
 
-SwapchainSettings Swapchain::choose_settings(const PhysicalDevice& physical_device, const Window& window, vk::SurfaceKHR surface, bool vsync)
+SwapchainSettings Swapchain::choose_settings(const PhysicalDevice& physical_device, const Window& window, vk::SurfaceKHR surface, vk::PresentModeKHR present_mode)
 {
 	SwapchainSettings settings;
 	settings.surface = surface;
@@ -187,9 +187,9 @@ SwapchainSettings Swapchain::choose_settings(const PhysicalDevice& physical_devi
 	settings.present_mode = vk::PresentModeKHR::eFifo;
 	for (const vk::PresentModeKHR& pm : physical_device.get().getSurfacePresentModesKHR(surface))
 	{
-		if (vsync && pm == vk::PresentModeKHR::eFifo) { settings.present_mode = pm; break; }
-		if (!vsync && pm == vk::PresentModeKHR::eImmediate) { settings.present_mode = pm; break; }
+		if (pm == present_mode) settings.present_mode = pm;
 	}
+	if (settings.present_mode != present_mode) VKTE_WARN("vkte: Present mode {} is not supported, falling back to FIFO", vk::to_string(present_mode));
 
 	return settings;
 }
