@@ -1,5 +1,6 @@
 #include "vkte/shader_repository.hpp"
 
+#include <array>
 #include <filesystem>
 #include <fstream>
 #include <unordered_set>
@@ -50,17 +51,20 @@ static std::string shader_key(const Shader& shader)
 
 static Slang::ComPtr<slang::ISession> create_session(Slang::ComPtr<slang::IGlobalSession> global_session, const std::string& shader_root_dir)
 {
+	std::array<slang::CompilerOptionEntry, 2> option_entries{};
 	// enable all capabilities to prevent any warnings about implicit upgrades
-	slang::CompilerOptionEntry capability_entry{};
-	capability_entry.name = slang::CompilerOptionName::Capability;
-	capability_entry.value.intValue0 = global_session->findCapability("all");
+	option_entries[0].name = slang::CompilerOptionName::Capability;
+	option_entries[0].value.intValue0 = global_session->findCapability("all");
+	// keep the entry point's own name in the SPIR-V (Slang renames it to "main" otherwise), since that name is what the pipeline asks for
+	option_entries[1].name = slang::CompilerOptionName::VulkanUseEntryPointName;
+	option_entries[1].value.intValue0 = 1;
 
 	slang::TargetDesc target_desc{};
 	target_desc.format = SLANG_SPIRV;
 	target_desc.profile = global_session->findProfile("spirv_1_5");
 	target_desc.forceGLSLScalarBufferLayout = true;
-	target_desc.compilerOptionEntries = &capability_entry;
-	target_desc.compilerOptionEntryCount = 1;
+	target_desc.compilerOptionEntries = option_entries.data();
+	target_desc.compilerOptionEntryCount = uint32_t(option_entries.size());
 
 	const char* search_paths[] = {shader_root_dir.c_str(), VKTE_BUNDLED_SHADER_DIR};
 	slang::SessionDesc session_desc{};
