@@ -44,6 +44,12 @@ namespace vkte
 		return Buffer<T>(vk::BufferPointer<T>(gStorageAddressTable[handle.id]));
 	}
 
+	public Buffer<T> get_buffer<T>(BufferHandle handle, uint64_t byte_offset)
+	{
+		if (!handle.valid()) return Buffer<T>(vk::BufferPointer<T>(0UL));
+		return Buffer<T>(vk::BufferPointer<T>(gStorageAddressTable[handle.id] + byte_offset));
+	}
+
 	public Ref<T> get_single_element_buffer<T>(BufferHandle handle)
 	{
 		return vk::BufferPointer<T>(gStorageAddressTable[handle.id]).Get();
