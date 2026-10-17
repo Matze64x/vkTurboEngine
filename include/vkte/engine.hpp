@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <chrono>
 #include <memory>
 #include <string>
@@ -46,7 +47,8 @@ class Engine
 public:
 	explicit Engine(const EngineSettings& settings);
 	~Engine();
-	// A frame can only begin again after it's no longer in flight.
+	// Waits until the frame's previous use is over. Before the frame's work, it builds the
+	// acceleration structures changed since the last frame.
 	void begin_frame();
 	void end_frame();
 	uint32_t get_current_frame() const { return current_frame; }
@@ -117,6 +119,7 @@ private:
 	std::vector<vk::Semaphore> timeline_semaphores;
 	std::vector<std::unique_ptr<DeviceTimer>> device_timers;
 	std::vector<std::unique_ptr<AccelerationStructureBuilder>> acceleration_structure_builders;
+	std::array<CommandBufferHandle, frames_in_flight> frame_work_cbs;
 	std::unique_ptr<Swapchain> swapchain;
 	bool limit_presents = false;
 	std::chrono::steady_clock::time_point next_present_time;

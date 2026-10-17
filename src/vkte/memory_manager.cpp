@@ -164,6 +164,7 @@ void MemoryManager::flush_pending_destructions(bool force)
 			free_image_indices.push_back(pd.bindless_image.id);
 		}
 		if (pd.handle.valid()) storage.destroy(pd.handle);
+		if (pd.acceleration_structure) vmc.logical_device.get().destroyAccelerationStructureKHR(pd.acceleration_structure);
 	}
 }
 
@@ -222,6 +223,16 @@ void MemoryManager::destroy(const ImageHandle& handle)
 	image.resource = ResourceHandle{};
 	image.unique_name.clear();
 	mark_image_dirty(handle.id);
+}
+
+void MemoryManager::destroy(const ResourceHandle& storage_resource)
+{
+	pending_destructions.push(PendingDestruction(storage_resource, global_frame_counter, BufferHandle()));
+}
+
+void MemoryManager::destroy(vk::AccelerationStructureKHR acceleration_structure)
+{
+	pending_destructions.push(PendingDestruction(acceleration_structure, global_frame_counter));
 }
 
 Buffer& MemoryManager::get_buffer(const BufferHandle& handle)

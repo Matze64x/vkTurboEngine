@@ -4,6 +4,7 @@
 #include <functional>
 #include "vulkan/vulkan.hpp"
 #include "vkte/command_pool.hpp"
+#include "vkte/global_constants.hpp"
 #include "vkte/resource_handles.hpp"
 #include "vkte/vulkan_main_context.hpp"
 
@@ -24,9 +25,11 @@ public:
 	void run_one_time_compute(const std::function<void(vk::CommandBuffer&)>& record);
 	void run_one_time_transfer(const std::function<void(vk::CommandBuffer&)>& record);
 
-	void submit_graphics(vk::ArrayProxy<const vk::SubmitInfo2> const& submit_infos) const;
-	void submit_compute(vk::ArrayProxy<const vk::SubmitInfo2> const& submit_infos) const;
-	void submit_transfer(vk::ArrayProxy<const vk::SubmitInfo2> const& submit_infos) const;
+	// A frame's submissions wait for the previous frame's and for the work Engine::begin_frame()
+	// submitted, so frames run one after another on the device.
+	void submit_graphics(vk::ArrayProxy<const vk::SubmitInfo2> const& submit_infos);
+	void submit_compute(vk::ArrayProxy<const vk::SubmitInfo2> const& submit_infos);
+	void submit_transfer(vk::ArrayProxy<const vk::SubmitInfo2> const& submit_infos);
 
 private:
 	enum Type
@@ -37,7 +40,15 @@ private:
 		TYPE_COUNT
 	};
 
+	friend class Engine;
+	// waits until the frame's previous submissions are done
+	void begin_frame(uint32_t frame_index);
+	void end_frame(uint32_t frame_index);
+	// the frame's later submissions wait for its compute submissions so far
+	void wait_for_compute_submissions();
+
 	void run_one_time(const std::function<void(vk::CommandBuffer&)>& record, const vk::Queue& queue, Type type);
+	void submit(Type type, const vk::Queue& queue, vk::ArrayProxy<const vk::SubmitInfo2> const& submit_infos);
 
 	const VulkanMainContext& vmc;
 	std::vector<CommandPool> command_pools;
@@ -45,5 +56,8 @@ private:
 	std::vector<vk::CommandBuffer> command_buffers;
 	std::array<vk::Semaphore, TYPE_COUNT> timeline_semaphores{};
 	std::array<uint64_t, TYPE_COUNT> timeline_values{};
+	// per frame in flight, the timeline values its submissions signaled last
+	std::array<std::array<uint64_t, TYPE_COUNT>, frames_in_flight> frame_end_values{};
+	std::array<vk::SemaphoreSubmitInfo, TYPE_COUNT> frame_waits{};
 };
 } // namespace vkte

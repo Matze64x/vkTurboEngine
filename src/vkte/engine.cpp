@@ -18,6 +18,7 @@ Engine::Engine(const EngineSettings& settings) : command(vmc), storage(vmc, comm
 	}
 	vmc.construct(settings.features, window);
 	command.construct();
+	for (CommandBufferHandle& cb : frame_work_cbs) cb = command.add_command_buffer(QueueFamilyFlags::Compute);
 	memory_manager.construct();
 	shader_repository.construct(vmc.logical_device.get(), settings.shader_root_dir);
 	if (window)
@@ -89,11 +90,27 @@ void Engine::bind(vk::CommandBuffer cb, PipelineHandle pipeline, DescriptorSetsH
 
 void Engine::begin_frame()
 {
+	command.begin_frame(current_frame);
+	bool has_frame_work = false;
+	for (const std::unique_ptr<AccelerationStructureBuilder>& builder : acceleration_structure_builders) has_frame_work |= builder && builder->has_frame_work();
+	if (has_frame_work)
+	{
+		vk::CommandBuffer& cb = command.begin(frame_work_cbs[current_frame]);
+		for (const std::unique_ptr<AccelerationStructureBuilder>& builder : acceleration_structure_builders)
+		{
+			if (builder && builder->has_frame_work()) builder->begin_frame(cb, current_frame);
+		}
+		cb.end();
+		const vk::CommandBufferSubmitInfo cbsi(cb);
+		command.submit_compute(vk::SubmitInfo2({}, {}, cbsi, {}));
+		command.wait_for_compute_submissions();
+	}
 	memory_manager.begin_frame(current_frame);
 }
 
 void Engine::end_frame()
 {
+	command.end_frame(current_frame);
 	current_frame = (current_frame + 1) % frames_in_flight;
 }
 

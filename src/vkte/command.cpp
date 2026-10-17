@@ -18,7 +18,11 @@ void Command::construct()
 
 	const vk::SemaphoreTypeCreateInfo stci(vk::SemaphoreType::eTimeline, 0);
 	const vk::SemaphoreCreateInfo sci({}, &stci);
-	for (vk::Semaphore& semaphore : timeline_semaphores) semaphore = vmc.logical_device.get().createSemaphore(sci);
+	for (uint32_t i = 0; i < TYPE_COUNT; i++)
+	{
+		timeline_semaphores[i] = vmc.logical_device.get().createSemaphore(sci);
+		frame_waits[i] = vk::SemaphoreSubmitInfo(timeline_semaphores[i], 0, vk::PipelineStageFlagBits2::eAllCommands);
+	}
 }
 
 void Command::destruct()
@@ -85,18 +89,53 @@ void Command::run_one_time(const std::function<void(vk::CommandBuffer&)>& record
 	cb.reset();
 }
 
-void Command::submit_graphics(vk::ArrayProxy<const vk::SubmitInfo2> const& submit_infos) const
+void Command::begin_frame(uint32_t frame_index)
 {
-	vmc.get_graphics_queue().submit2(submit_infos);
+	const vk::SemaphoreWaitInfo swi({}, timeline_semaphores, frame_end_values[frame_index]);
+	VKTE_CHECK(vmc.logical_device.get().waitSemaphores(swi, uint64_t(-1)), "vkte: Failed to wait for timeline semaphore!");
+	const std::array<uint64_t, TYPE_COUNT>& previous_frame_end_values = frame_end_values[(frame_index + frames_in_flight - 1) % frames_in_flight];
+	for (uint32_t i = 0; i < TYPE_COUNT; i++) frame_waits[i].value = previous_frame_end_values[i];
 }
 
-void Command::submit_compute(vk::ArrayProxy<const vk::SubmitInfo2> const& submit_infos) const
+void Command::end_frame(uint32_t frame_index)
 {
-	vmc.get_compute_queue().submit2(submit_infos);
+	frame_end_values[frame_index] = timeline_values;
 }
 
-void Command::submit_transfer(vk::ArrayProxy<const vk::SubmitInfo2> const& submit_infos) const
+void Command::wait_for_compute_submissions()
 {
-	vmc.get_transfer_queue().submit2(submit_infos);
+	frame_waits[COMPUTE].value = timeline_values[COMPUTE];
+}
+
+void Command::submit(Type type, const vk::Queue& queue, vk::ArrayProxy<const vk::SubmitInfo2> const& submit_infos)
+{
+	std::vector<vk::SubmitInfo2> infos(submit_infos.begin(), submit_infos.end());
+	std::vector<std::vector<vk::SemaphoreSubmitInfo>> waits(infos.size());
+	std::vector<std::vector<vk::SemaphoreSubmitInfo>> signals(infos.size());
+	for (uint32_t i = 0; i < infos.size(); i++)
+	{
+		waits[i].assign(infos[i].pWaitSemaphoreInfos, infos[i].pWaitSemaphoreInfos + infos[i].waitSemaphoreInfoCount);
+		waits[i].insert(waits[i].end(), frame_waits.begin(), frame_waits.end());
+		signals[i].assign(infos[i].pSignalSemaphoreInfos, infos[i].pSignalSemaphoreInfos + infos[i].signalSemaphoreInfoCount);
+		signals[i].emplace_back(timeline_semaphores[type], ++timeline_values[type], vk::PipelineStageFlagBits2::eAllCommands);
+		infos[i].setWaitSemaphoreInfos(waits[i]);
+		infos[i].setSignalSemaphoreInfos(signals[i]);
+	}
+	queue.submit2(infos);
+}
+
+void Command::submit_graphics(vk::ArrayProxy<const vk::SubmitInfo2> const& submit_infos)
+{
+	submit(GRAPHICS, vmc.get_graphics_queue(), submit_infos);
+}
+
+void Command::submit_compute(vk::ArrayProxy<const vk::SubmitInfo2> const& submit_infos)
+{
+	submit(COMPUTE, vmc.get_compute_queue(), submit_infos);
+}
+
+void Command::submit_transfer(vk::ArrayProxy<const vk::SubmitInfo2> const& submit_infos)
+{
+	submit(TRANSFER, vmc.get_transfer_queue(), submit_infos);
 }
 } // namespace vkte

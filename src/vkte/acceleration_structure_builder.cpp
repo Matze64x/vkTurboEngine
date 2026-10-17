@@ -29,31 +29,23 @@ AccelerationStructureBuilder::ScratchBuffer AccelerationStructureBuilder::create
 
 void AccelerationStructureBuilder::destruct()
 {
-	vmc.logical_device.get().destroyAccelerationStructureKHR(top_level_as.handle);
-	clean_up_scratch_buffers(false);
-	if (top_level_as.buffer.valid()) memory_manager.destroy(top_level_as.buffer);
-
+	if (tlas.handle) destroy_tlas();
+	for (ResourceHandle& buffer : instance_buffers)
+	{
+		if (buffer.valid()) memory_manager.destroy(buffer);
+		buffer = ResourceHandle();
+	}
 	for (BLAS& blas : bottom_level_as)
 	{
-		vmc.logical_device.get().destroyAccelerationStructureKHR(blas.handle);
-		if (top_level_as.buffer.valid()) memory_manager.get_storage().destroy(blas.buffer);
+		if (blas.handle) memory_manager.destroy(blas.handle);
+		if (blas.buffer.valid()) memory_manager.destroy(blas.buffer);
+		if (blas.scratch_buffer.valid()) memory_manager.destroy(blas.scratch_buffer);
 	}
 	bottom_level_as.clear();
+	free_blas_indices.clear();
+	blas_update_indices.clear();
 	instances.clear();
-}
-
-void AccelerationStructureBuilder::clean_up_scratch_buffers(bool keep_dynamic)
-{
-	for (BLAS& blas : bottom_level_as)
-	{
-		if (blas.scratch_buffer.valid() && (!keep_dynamic || !blas.dynamic))
-		{
-			memory_manager.get_storage().destroy(blas.scratch_buffer);
-			blas.scratch_buffer = ResourceHandle();
-		}
-	}
-	if (top_level_as.scratch_buffer.valid() && !keep_dynamic) memory_manager.get_storage().destroy(top_level_as.scratch_buffer);
-	if (instances_buffer.valid() && !keep_dynamic) memory_manager.get_storage().destroy(instances_buffer);
+	tlas_outdated = false;
 }
 
 uint32_t AccelerationStructureBuilder::add_blas(const std::string& buffer_name, const BLASData& blas_data)
@@ -64,9 +56,7 @@ uint32_t AccelerationStructureBuilder::add_blas(const std::string& buffer_name, 
 	vk::DeviceOrHostAddressConstKHR vertex_buffer_device_adress(vertex_buffer.get_device_address());
 	vk::DeviceOrHostAddressConstKHR index_buffer_device_adress(index_buffer.get_device_address());
 
-	uint32_t blas_idx = bottom_level_as.size();
-	bottom_level_as.emplace_back();
-	BLAS& blas = bottom_level_as[blas_idx];
+	BLAS blas;
 	blas.dynamic = blas_data.dynamic;
 	for (uint32_t i = 0; i < blas_data.index_offsets.size(); ++i)
 	{
@@ -91,18 +81,14 @@ uint32_t AccelerationStructureBuilder::add_blas(const std::string& buffer_name, 
 		asg.geometry.triangles.transformData.hostAddress = nullptr;
 		blas.asgs.push_back(asg);
 	}
-
-	create_blas(buffer_name, blas_idx);
-	return blas_idx;
+	return create_blas(buffer_name, std::move(blas));
 }
 
 uint32_t AccelerationStructureBuilder::add_aabb_blas(const std::string& buffer_name, const AABBBLASData& blas_data)
 {
 	Buffer& aabb_buffer = memory_manager.get_buffer(blas_data.aabb_buffer_id);
 
-	const uint32_t blas_idx = bottom_level_as.size();
-	bottom_level_as.emplace_back();
-	BLAS& blas = bottom_level_as[blas_idx];
+	BLAS blas;
 	blas.dynamic = blas_data.dynamic;
 
 	vk::AccelerationStructureBuildRangeInfoKHR asbri;
@@ -118,14 +104,20 @@ uint32_t AccelerationStructureBuilder::add_aabb_blas(const std::string& buffer_n
 	asg.geometryType = vk::GeometryTypeKHR::eAabbs;
 	asg.geometry.aabbs = vk::AccelerationStructureGeometryAabbsDataKHR(vk::DeviceOrHostAddressConstKHR(aabb_buffer.get_device_address()), sizeof(vk::AabbPositionsKHR));
 	blas.asgs.push_back(asg);
-
-	create_blas(buffer_name, blas_idx);
-	return blas_idx;
+	return create_blas(buffer_name, std::move(blas));
 }
 
-void AccelerationStructureBuilder::create_blas(const std::string& buffer_name, uint32_t blas_idx)
+uint32_t AccelerationStructureBuilder::create_blas(const std::string& buffer_name, BLAS new_blas)
 {
+	uint32_t blas_idx = bottom_level_as.size();
+	if (free_blas_indices.empty()) bottom_level_as.emplace_back();
+	else
+	{
+		blas_idx = free_blas_indices.back();
+		free_blas_indices.pop_back();
+	}
 	BLAS& blas = bottom_level_as[blas_idx];
+	blas = std::move(new_blas);
 	blas.asbgi.type = vk::AccelerationStructureTypeKHR::eBottomLevel;
 	blas.asbgi.flags = vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace;
 	blas.asbgi.mode = vk::BuildAccelerationStructureModeKHR::eBuild;
@@ -157,11 +149,24 @@ void AccelerationStructureBuilder::create_blas(const std::string& buffer_name, u
 	blas.asbgi.scratchData.deviceAddress = scratch.device_address;
 
 	update_blas(blas_idx);
+	return blas_idx;
 }
 
 void AccelerationStructureBuilder::update_blas(uint32_t blas_idx)
 {
 	blas_update_indices.emplace(blas_idx);
+	tlas_outdated = true;
+}
+
+void AccelerationStructureBuilder::remove_blas(uint32_t blas_idx)
+{
+	BLAS& blas = bottom_level_as[blas_idx];
+	memory_manager.destroy(blas.handle);
+	memory_manager.destroy(blas.buffer);
+	if (blas.scratch_buffer.valid()) memory_manager.destroy(blas.scratch_buffer);
+	blas = BLAS();
+	blas_update_indices.erase(blas_idx);
+	free_blas_indices.push_back(blas_idx);
 }
 
 uint32_t AccelerationStructureBuilder::add_instance(uint32_t blas_idx, const vk::TransformMatrixKHR& M, uint32_t custom_index, uint8_t mask)
@@ -173,102 +178,130 @@ uint32_t AccelerationStructureBuilder::add_instance(uint32_t blas_idx, const vk:
 	instance.setFlags(vk::GeometryInstanceFlagBitsKHR::eTriangleFacingCullDisable);
 	instance.mask = mask;
 	instances.push_back(instance);
+	tlas_outdated = true;
 	return instances.size() - 1;
 }
 
 void AccelerationStructureBuilder::update_instance(uint32_t instance_idx, const vk::TransformMatrixKHR& M)
 {
 	instances[instance_idx].transform = M;
-	memory_manager.get_storage().get_buffer(instances_buffer).update_data(&instances[instance_idx], 1, instance_idx);
+	tlas_outdated = true;
 }
 
-void AccelerationStructureBuilder::construct(vk::CommandBuffer& cb, QueueFamilyFlags build_queue, const std::string& buffer_name)
+void AccelerationStructureBuilder::clear_instances()
 {
-	Buffer::Settings instances_buffer_settings;
-	instances_buffer_settings.initial_data = std::as_bytes(std::span(instances));
-	instances_buffer_settings.element_count = instances.size();
-	instances_buffer_settings.usage_flags = vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR;
-	instances_buffer_settings.location = MemoryLocation::DeviceLocal;
-	instances_buffer_settings.queues = QueueFamilyFlags::Compute | QueueFamilyFlags::Graphics | QueueFamilyFlags::Transfer;
-	instances_buffer = memory_manager.get_storage().add_buffer(buffer_name + " instances (vkte internal)", instances_buffer_settings);
+	instances.clear();
+	tlas_outdated = true;
+}
 
-	vk::DeviceOrHostAddressConstKHR instance_data_device_address;
-	instance_data_device_address.deviceAddress = memory_manager.get_storage().get_buffer(instances_buffer).get_device_address();
+bool AccelerationStructureBuilder::has_frame_work() const
+{
+	return !blas_update_indices.empty() || tlas_outdated;
+}
 
-	top_level_as.asg.geometryType = vk::GeometryTypeKHR::eInstances;
-	top_level_as.asg.flags = vk::GeometryFlagBitsKHR::eOpaque;
-	top_level_as.asg.geometry.instances.sType = vk::StructureType::eAccelerationStructureGeometryInstancesDataKHR;
-	top_level_as.asg.geometry.instances.arrayOfPointers = VK_FALSE;
-	top_level_as.asg.geometry.instances.data = instance_data_device_address;
+void AccelerationStructureBuilder::begin_frame(vk::CommandBuffer& cb, uint32_t frame_index)
+{
+	if (!blas_update_indices.empty())
+	{
+		std::vector<vk::AccelerationStructureBuildGeometryInfoKHR> asbgis;
+		std::vector<vk::AccelerationStructureBuildRangeInfoKHR*> pasbris;
+		for (uint32_t blas_idx : blas_update_indices)
+		{
+			BLAS& blas = bottom_level_as[blas_idx];
+			asbgis.push_back(blas.asbgi);
+			pasbris.push_back(blas.asbris.data());
+			// only dynamic BLASes are built again
+			if (blas.dynamic) continue;
+			memory_manager.destroy(blas.scratch_buffer);
+			blas.scratch_buffer = ResourceHandle();
+		}
+		cb.buildAccelerationStructuresKHR(asbgis, pasbris);
+		blas_update_indices.clear();
+		const vk::MemoryBarrier2 barrier(vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR, vk::AccessFlagBits2::eAccelerationStructureWriteKHR, vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR, vk::AccessFlagBits2::eAccelerationStructureReadKHR);
+		cb.pipelineBarrier2(vk::DependencyInfo({}, barrier, {}, {}));
+	}
+	// its size depends on the instance count
+	if (!tlas.handle || tlas.primitive_count != instances.size())
+	{
+		if (tlas.handle) destroy_tlas();
+		create_tlas();
+	}
+	tlas.asg.geometry.instances.data.deviceAddress = write_instances(frame_index);
+	cb.buildAccelerationStructuresKHR({tlas.asbgi}, {&tlas.asbri});
+	tlas_outdated = false;
+}
 
-	top_level_as.asbgi.type = vk::AccelerationStructureTypeKHR::eTopLevel;
-	top_level_as.asbgi.flags = vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace;
-	top_level_as.asbgi.mode = vk::BuildAccelerationStructureModeKHR::eBuild;
-	top_level_as.asbgi.geometryCount = 1;
-	top_level_as.asbgi.pGeometries = &top_level_as.asg;
+vk::DeviceAddress AccelerationStructureBuilder::write_instances(uint32_t frame_index)
+{
+	const vk::AccelerationStructureInstanceKHR empty_instance;
+	// a buffer cannot be empty
+	const std::span<const std::byte> data = instances.empty() ? std::as_bytes(std::span(&empty_instance, 1)) : std::as_bytes(std::span(instances));
+	ResourceHandle& buffer = instance_buffers[frame_index];
+	if (buffer.valid() && memory_manager.get_storage().get_buffer(buffer).get_byte_size() == data.size())
+	{
+		memory_manager.get_storage().get_buffer(buffer).update_data_bytes(data.data(), data.size());
+		return memory_manager.get_storage().get_buffer(buffer).get_device_address();
+	}
+	if (buffer.valid()) memory_manager.destroy(buffer);
+	Buffer::Settings settings;
+	settings.initial_data = data;
+	settings.usage_flags = vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR;
+	settings.location = MemoryLocation::BARFallbackHostVisible;
+	settings.queues = QueueFamilyFlags::Compute | QueueFamilyFlags::Graphics | QueueFamilyFlags::Transfer;
+	buffer = memory_manager.get_storage().add_buffer("tlas instances (vkte internal)", settings);
+	return memory_manager.get_storage().get_buffer(buffer).get_device_address();
+}
 
-	top_level_as.primitive_count = instances.size();
+void AccelerationStructureBuilder::create_tlas()
+{
+	tlas.asg.geometryType = vk::GeometryTypeKHR::eInstances;
+	tlas.asg.flags = vk::GeometryFlagBitsKHR::eOpaque;
+	tlas.asg.geometry.instances.sType = vk::StructureType::eAccelerationStructureGeometryInstancesDataKHR;
+	tlas.asg.geometry.instances.arrayOfPointers = VK_FALSE;
 
-	vk::AccelerationStructureBuildSizesInfoKHR asbsi = vmc.logical_device.get().getAccelerationStructureBuildSizesKHR(vk::AccelerationStructureBuildTypeKHR::eDevice, top_level_as.asbgi, top_level_as.primitive_count);
+	tlas.asbgi.type = vk::AccelerationStructureTypeKHR::eTopLevel;
+	tlas.asbgi.flags = vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace;
+	tlas.asbgi.mode = vk::BuildAccelerationStructureModeKHR::eBuild;
+	tlas.asbgi.geometryCount = 1;
+	tlas.asbgi.pGeometries = &tlas.asg;
+
+	tlas.primitive_count = instances.size();
+
+	vk::AccelerationStructureBuildSizesInfoKHR asbsi = vmc.logical_device.get().getAccelerationStructureBuildSizesKHR(vk::AccelerationStructureBuildTypeKHR::eDevice, tlas.asbgi, tlas.primitive_count);
 
 	Buffer::Settings top_level_as_buffer_settings;
 	top_level_as_buffer_settings.byte_size = asbsi.accelerationStructureSize;
 	top_level_as_buffer_settings.usage_flags = vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR;
 	top_level_as_buffer_settings.location = MemoryLocation::DeviceLocal;
 	top_level_as_buffer_settings.queues = QueueFamilyFlags::Compute | QueueFamilyFlags::Graphics | QueueFamilyFlags::Transfer;
-	top_level_as.buffer = memory_manager.add_bindless_buffer(buffer_name, top_level_as_buffer_settings);
+	tlas.buffer = memory_manager.add_bindless_buffer("tlas", top_level_as_buffer_settings);
 
-	top_level_as.asci.buffer = memory_manager.get_buffer(top_level_as.buffer).get();
-	top_level_as.asci.size = asbsi.accelerationStructureSize;
-	top_level_as.asci.type = vk::AccelerationStructureTypeKHR::eTopLevel;
-	top_level_as.handle = vmc.logical_device.get().createAccelerationStructureKHR(top_level_as.asci);
+	tlas.asci.buffer = memory_manager.get_buffer(tlas.buffer).get();
+	tlas.asci.size = asbsi.accelerationStructureSize;
+	tlas.asci.type = vk::AccelerationStructureTypeKHR::eTopLevel;
+	tlas.handle = vmc.logical_device.get().createAccelerationStructureKHR(tlas.asci);
 
-	wdsas.accelerationStructureCount = 1;
-	wdsas.pAccelerationStructures = &(top_level_as.handle);
-	memory_manager.get_buffer(top_level_as.buffer).pNext = &(wdsas);
+	tlas.wdsas.accelerationStructureCount = 1;
+	tlas.wdsas.pAccelerationStructures = &tlas.handle;
+	memory_manager.get_buffer(tlas.buffer).pNext = &tlas.wdsas;
 
-	const ScratchBuffer scratch = create_scratch_buffer(buffer_name, asbsi.buildScratchSize);
-	top_level_as.scratch_buffer = scratch.buffer;
+	const ScratchBuffer scratch = create_scratch_buffer("tlas", asbsi.buildScratchSize);
+	tlas.scratch_buffer = scratch.buffer;
 
-	top_level_as.asbgi.dstAccelerationStructure = top_level_as.handle;
-	top_level_as.asbgi.scratchData.deviceAddress = scratch.device_address;
+	tlas.asbgi.dstAccelerationStructure = tlas.handle;
+	tlas.asbgi.scratchData.deviceAddress = scratch.device_address;
 
-	top_level_as.asbri.primitiveCount = instances.size();
-	top_level_as.asbri.primitiveOffset = 0;
-	top_level_as.asbri.firstVertex = 0;
-	top_level_as.asbri.transformOffset = 0;
-	update_tlas(cb, build_queue);
+	tlas.asbri.primitiveCount = instances.size();
+	tlas.asbri.primitiveOffset = 0;
+	tlas.asbri.firstVertex = 0;
+	tlas.asbri.transformOffset = 0;
 }
 
-void AccelerationStructureBuilder::update_tlas(vk::CommandBuffer& cb, QueueFamilyFlags build_queue)
+void AccelerationStructureBuilder::destroy_tlas()
 {
-	std::vector<vk::AccelerationStructureBuildGeometryInfoKHR> asbgis;
-	std::vector<vk::AccelerationStructureBuildRangeInfoKHR*> pasbris;
-	std::vector<vk::BufferMemoryBarrier2> blas_memory_barriers;
-	for (uint32_t blas_idx : blas_update_indices)
-	{
-		BLAS& blas = bottom_level_as[blas_idx];
-		asbgis.push_back(blas.asbgi);
-		pasbris.push_back(blas.asbris.data());
-		blas_memory_barriers.push_back(vk::BufferMemoryBarrier2(vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR, vk::AccessFlagBits2::eAccelerationStructureWriteKHR, vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR, vk::AccessFlagBits2::eAccelerationStructureReadKHR, vmc.queue_families.get(build_queue), vmc.queue_families.get(build_queue), memory_manager.get_storage().get_buffer(blas.buffer).get(), 0, memory_manager.get_storage().get_buffer(blas.buffer).get_byte_size()));
-	}
-	blas_update_indices.clear();
-	if (!asbgis.empty())
-	{
-		cb.buildAccelerationStructuresKHR(asbgis, pasbris);
-		vk::DependencyInfo blas_dependency_info;
-		blas_dependency_info.dependencyFlags = vk::DependencyFlagBits::eDeviceGroup;
-		blas_dependency_info.bufferMemoryBarrierCount = blas_memory_barriers.size();
-		blas_dependency_info.pBufferMemoryBarriers = blas_memory_barriers.data();
-		cb.pipelineBarrier2(blas_dependency_info);
-	}
-	cb.buildAccelerationStructuresKHR({top_level_as.asbgi}, {&top_level_as.asbri});
-	const vkte::Buffer& buffer = memory_manager.get_buffer(top_level_as.buffer);
-	vk::BufferMemoryBarrier2 barrier = vk::BufferMemoryBarrier2(vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR, vk::AccessFlagBits2::eAccelerationStructureWriteKHR, vk::PipelineStageFlagBits2::eAllCommands, vk::AccessFlagBits2::eAccelerationStructureReadKHR, vmc.queue_families.get(build_queue), vmc.queue_families.get(build_queue), buffer.get(), 0, buffer.get_byte_size());
-	vk::DependencyInfo tlas_dependency_info;
-	tlas_dependency_info.dependencyFlags = vk::DependencyFlagBits::eDeviceGroup;
-	tlas_dependency_info.bufferMemoryBarrierCount = 1;
-	tlas_dependency_info.pBufferMemoryBarriers = &barrier;
-	cb.pipelineBarrier2(tlas_dependency_info);
+	memory_manager.destroy(tlas.handle);
+	memory_manager.destroy(tlas.buffer);
+	memory_manager.destroy(tlas.scratch_buffer);
+	tlas = TLAS();
 }
 } // namespace vkte
