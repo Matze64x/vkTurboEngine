@@ -18,6 +18,7 @@
 #include "vkte/swapchain.hpp"
 #include "vkte/thread_manager.hpp"
 #include "vkte/command.hpp"
+#include "vkte/frame_work.hpp"
 #include "vkte/vulkan_main_context.hpp"
 #include "vkte_window/window.hpp"
 #include "vkte_window/ui.hpp"
@@ -47,8 +48,8 @@ class Engine
 public:
 	explicit Engine(const EngineSettings& settings);
 	~Engine();
-	// Waits until the frame's previous use is over. Before the frame's work, it builds the
-	// acceleration structures changed since the last frame.
+	// Waits until the frame's previous use is over. Before the frame's work, it records the registered
+	// frame work and builds the acceleration structures changed since the last frame.
 	void begin_frame();
 	void end_frame();
 	uint32_t get_current_frame() const { return current_frame; }
@@ -89,6 +90,10 @@ public:
 	void destroy(DeviceTimerHandle handle);
 	DeviceTimer& get(DeviceTimerHandle handle) const;
 
+	// recorded at every begin_frame() until it is unregistered
+	void register_frame_work(FrameWork& frame_work);
+	void unregister_frame_work(FrameWork& frame_work);
+
 	AccelerationStructureBuilderHandle add_acceleration_structure_builder();
 	void destroy(AccelerationStructureBuilderHandle handle);
 	AccelerationStructureBuilder& get(AccelerationStructureBuilderHandle handle) const;
@@ -110,6 +115,7 @@ private:
 	ShaderRepository shader_repository;
 	FrameSettings frame_settings;
 	std::vector<Component*> components;
+	std::vector<FrameWork*> frame_works;
 	ResourceDeclarations declarations;
 	vk::DescriptorPool descriptor_pool;
 	std::vector<vk::DescriptorSetLayout> descriptor_set_layouts;

@@ -92,10 +92,23 @@ void Engine::begin_frame()
 {
 	command.begin_frame(current_frame);
 	bool has_frame_work = false;
+	for (const FrameWork* frame_work : frame_works) has_frame_work |= frame_work->has_frame_work();
 	for (const std::unique_ptr<AccelerationStructureBuilder>& builder : acceleration_structure_builders) has_frame_work |= builder && builder->has_frame_work();
 	if (has_frame_work)
 	{
 		vk::CommandBuffer& cb = command.begin(frame_work_cbs[current_frame]);
+		bool recorded_frame_work = false;
+		for (FrameWork* frame_work : frame_works)
+		{
+			if (!frame_work->has_frame_work()) continue;
+			frame_work->record_frame_work(cb, current_frame);
+			recorded_frame_work = true;
+		}
+		if (recorded_frame_work)
+		{
+			const vk::MemoryBarrier2 barrier(vk::PipelineStageFlagBits2::eAllCommands, vk::AccessFlagBits2::eMemoryWrite, vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR, vk::AccessFlagBits2::eShaderRead | vk::AccessFlagBits2::eAccelerationStructureReadKHR);
+			cb.pipelineBarrier2(vk::DependencyInfo({}, barrier, {}, {}));
+		}
 		for (const std::unique_ptr<AccelerationStructureBuilder>& builder : acceleration_structure_builders)
 		{
 			if (builder && builder->has_frame_work()) builder->begin_frame(cb, current_frame);
@@ -106,6 +119,21 @@ void Engine::begin_frame()
 		command.wait_for_compute_submissions();
 	}
 	memory_manager.begin_frame(current_frame);
+}
+
+void Engine::register_frame_work(FrameWork& frame_work)
+{
+	frame_works.push_back(&frame_work);
+}
+
+void Engine::unregister_frame_work(FrameWork& frame_work)
+{
+	for (uint32_t i = 0; i < frame_works.size(); i++)
+	{
+		if (frame_works[i] != &frame_work) continue;
+		frame_works.erase(frame_works.begin() + i);
+		return;
+	}
 }
 
 void Engine::end_frame()
