@@ -22,6 +22,10 @@ struct DeviceTimerHandle : HandleBase {};
 struct AccelerationStructureBuilderHandle : HandleBase {};
 struct CommandBufferHandle : HandleBase {};
 
+// Acceleration Structure Builder Handles
+struct BLASHandle : HandleBase {};
+struct InstanceHandle : HandleBase {};
+
 // Memory Manager Handles
 struct BufferHandle : HandleBase {};
 struct ImageHandle : HandleBase {};

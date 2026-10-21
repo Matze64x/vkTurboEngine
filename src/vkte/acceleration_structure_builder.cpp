@@ -1,6 +1,7 @@
 #include "vkte/acceleration_structure_builder.hpp"
 
 #include <span>
+#include "vkte/vkte_log.hpp"
 
 namespace vkte
 {
@@ -42,13 +43,16 @@ void AccelerationStructureBuilder::destruct()
 		if (blas.scratch_buffer.valid()) memory_manager.destroy(blas.scratch_buffer);
 	}
 	bottom_level_as.clear();
+	blas_generations.clear();
+	instance_generations.clear();
 	free_blas_indices.clear();
 	blas_update_indices.clear();
 	instances.clear();
+	free_instance_indices.clear();
 	tlas_outdated = false;
 }
 
-uint32_t AccelerationStructureBuilder::add_blas(const std::string& buffer_name, const BLASData& blas_data)
+BLASHandle AccelerationStructureBuilder::add_blas(const std::string& buffer_name, const BLASData& blas_data)
 {
 	Buffer& vertex_buffer = memory_manager.get_buffer(blas_data.vertex_buffer_id);
 	Buffer& index_buffer = memory_manager.get_buffer(blas_data.index_buffer_id);
@@ -84,7 +88,7 @@ uint32_t AccelerationStructureBuilder::add_blas(const std::string& buffer_name, 
 	return create_blas(buffer_name, std::move(blas));
 }
 
-uint32_t AccelerationStructureBuilder::add_aabb_blas(const std::string& buffer_name, const AABBBLASData& blas_data)
+BLASHandle AccelerationStructureBuilder::add_aabb_blas(const std::string& buffer_name, const AABBBLASData& blas_data)
 {
 	Buffer& aabb_buffer = memory_manager.get_buffer(blas_data.aabb_buffer_id);
 
@@ -107,10 +111,14 @@ uint32_t AccelerationStructureBuilder::add_aabb_blas(const std::string& buffer_n
 	return create_blas(buffer_name, std::move(blas));
 }
 
-uint32_t AccelerationStructureBuilder::create_blas(const std::string& buffer_name, BLAS new_blas)
+BLASHandle AccelerationStructureBuilder::create_blas(const std::string& buffer_name, BLAS new_blas)
 {
 	uint32_t blas_idx = bottom_level_as.size();
-	if (free_blas_indices.empty()) bottom_level_as.emplace_back();
+	if (free_blas_indices.empty())
+	{
+		bottom_level_as.emplace_back();
+		blas_generations.push_back(0);
+	}
 	else
 	{
 		blas_idx = free_blas_indices.back();
@@ -148,49 +156,82 @@ uint32_t AccelerationStructureBuilder::create_blas(const std::string& buffer_nam
 	blas.asbgi.dstAccelerationStructure = blas.handle;
 	blas.asbgi.scratchData.deviceAddress = scratch.device_address;
 
-	update_blas(blas_idx);
-	return blas_idx;
+	const BLASHandle handle{{blas_idx, blas_generations[blas_idx]}};
+	update_blas(handle);
+	return handle;
 }
 
-void AccelerationStructureBuilder::update_blas(uint32_t blas_idx)
+uint32_t AccelerationStructureBuilder::get_index(BLASHandle blas) const
 {
-	blas_update_indices.emplace(blas_idx);
+	VKTE_ASSERT(blas.valid() && blas.id < bottom_level_as.size() && blas.generation == blas_generations[blas.id], "vkte: Invalid BLAS handle!");
+	return blas.id;
+}
+
+uint32_t AccelerationStructureBuilder::get_index(InstanceHandle instance) const
+{
+	VKTE_ASSERT(instance.valid() && instance.id < instances.size() && instance.generation == instance_generations[instance.id], "vkte: Invalid instance handle!");
+	return instance.id;
+}
+
+void AccelerationStructureBuilder::update_blas(BLASHandle handle)
+{
+	blas_update_indices.emplace(get_index(handle));
 	tlas_outdated = true;
 }
 
-void AccelerationStructureBuilder::remove_blas(uint32_t blas_idx)
+void AccelerationStructureBuilder::remove_blas(BLASHandle handle)
 {
+	const uint32_t blas_idx = get_index(handle);
 	BLAS& blas = bottom_level_as[blas_idx];
 	memory_manager.destroy(blas.handle);
 	memory_manager.destroy(blas.buffer);
 	if (blas.scratch_buffer.valid()) memory_manager.destroy(blas.scratch_buffer);
 	blas = BLAS();
+	blas_generations[blas_idx]++;
 	blas_update_indices.erase(blas_idx);
 	free_blas_indices.push_back(blas_idx);
 }
 
-uint32_t AccelerationStructureBuilder::add_instance(uint32_t blas_idx, const vk::TransformMatrixKHR& M, uint32_t custom_index, uint8_t mask)
+InstanceHandle AccelerationStructureBuilder::add_instance(BLASHandle blas, const vk::TransformMatrixKHR& M, uint32_t custom_index, uint8_t mask)
 {
 	vk::AccelerationStructureInstanceKHR instance;
 	instance.transform = M;
-	instance.accelerationStructureReference = bottom_level_as[blas_idx].device_address;
+	instance.accelerationStructureReference = bottom_level_as[get_index(blas)].device_address;
 	instance.instanceCustomIndex = custom_index;
 	instance.setFlags(vk::GeometryInstanceFlagBitsKHR::eTriangleFacingCullDisable);
 	instance.mask = mask;
-	instances.push_back(instance);
 	tlas_outdated = true;
-	return instances.size() - 1;
+	if (free_instance_indices.empty())
+	{
+		instances.push_back(instance);
+		instance_generations.push_back(0);
+		return InstanceHandle{{uint32_t(instances.size() - 1), 0}};
+	}
+	const uint32_t instance_idx = free_instance_indices.back();
+	free_instance_indices.pop_back();
+	instances[instance_idx] = instance;
+	return InstanceHandle{{instance_idx, instance_generations[instance_idx]}};
 }
 
-void AccelerationStructureBuilder::update_instance(uint32_t instance_idx, const vk::TransformMatrixKHR& M)
+void AccelerationStructureBuilder::update_instance(InstanceHandle instance, const vk::TransformMatrixKHR& M)
 {
-	instances[instance_idx].transform = M;
+	instances[get_index(instance)].transform = M;
 	tlas_outdated = true;
 }
 
-void AccelerationStructureBuilder::clear_instances()
+void AccelerationStructureBuilder::set_instance_blas(InstanceHandle instance, BLASHandle blas)
 {
-	instances.clear();
+	instances[get_index(instance)].accelerationStructureReference = bottom_level_as[get_index(blas)].device_address;
+	tlas_outdated = true;
+}
+
+void AccelerationStructureBuilder::remove_instance(InstanceHandle instance)
+{
+	const uint32_t instance_idx = get_index(instance);
+	// an instance without a BLAS is inactive
+	instances[instance_idx] = vk::AccelerationStructureInstanceKHR();
+	instance_generations[instance_idx]++;
+	free_instance_indices.push_back(instance_idx);
 	tlas_outdated = true;
 }
 

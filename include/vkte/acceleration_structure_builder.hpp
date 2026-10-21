@@ -33,15 +33,15 @@ public:
 		uint32_t aabb_count = 1;
 		bool dynamic = false;
 	};
-	uint32_t add_blas(const std::string& buffer_name, const BLASData& blas_data);
-	uint32_t add_aabb_blas(const std::string& buffer_name, const AABBBLASData& blas_data);
+	BLASHandle add_blas(const std::string& buffer_name, const BLASData& blas_data);
+	BLASHandle add_aabb_blas(const std::string& buffer_name, const AABBBLASData& blas_data);
 	// rebuilds a dynamic BLAS from its buffers
-	void update_blas(uint32_t blas_idx);
-	// its index is reused by the next added BLAS
-	void remove_blas(uint32_t blas_idx);
-	uint32_t add_instance(uint32_t blas_idx, const vk::TransformMatrixKHR& M, uint32_t custom_index, uint8_t mask = 0xFF);
-	void update_instance(uint32_t instance_idx, const vk::TransformMatrixKHR& M);
-	void clear_instances();
+	void update_blas(BLASHandle blas);
+	void remove_blas(BLASHandle blas);
+	InstanceHandle add_instance(BLASHandle blas, const vk::TransformMatrixKHR& M, uint32_t custom_index, uint8_t mask = 0xFF);
+	void update_instance(InstanceHandle instance, const vk::TransformMatrixKHR& M);
+	void set_instance_blas(InstanceHandle instance, BLASHandle blas);
+	void remove_instance(InstanceHandle instance);
 	BufferHandle get_tlas_buffer_handle() const { return tlas.buffer; }
 
 private:
@@ -83,7 +83,9 @@ private:
 	void begin_frame(vk::CommandBuffer& cb, uint32_t frame_index);
 
 	ScratchBuffer create_scratch_buffer(const std::string& buffer_name, vk::DeviceSize build_scratch_size);
-	uint32_t create_blas(const std::string& buffer_name, BLAS blas);
+	BLASHandle create_blas(const std::string& buffer_name, BLAS blas);
+	uint32_t get_index(BLASHandle blas) const;
+	uint32_t get_index(InstanceHandle instance) const;
 	void create_tlas();
 	void destroy_tlas();
 	vk::DeviceAddress write_instances(uint32_t frame_index);
@@ -92,9 +94,12 @@ private:
 	MemoryManager& memory_manager;
 	uint32_t scratch_offset_alignment = 0;
 	std::vector<BLAS> bottom_level_as;
+	std::vector<uint32_t> blas_generations;
 	std::vector<uint32_t> free_blas_indices;
 	std::set<uint32_t> blas_update_indices;
 	std::vector<vk::AccelerationStructureInstanceKHR> instances;
+	std::vector<uint32_t> instance_generations;
+	std::vector<uint32_t> free_instance_indices;
 	// host visible, per frame in flight, since the previous frame's build may not have run yet
 	std::array<ResourceHandle, frames_in_flight> instance_buffers;
 	TLAS tlas;
