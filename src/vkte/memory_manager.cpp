@@ -333,11 +333,14 @@ void MemoryManager::unregister_image(const ImageHandle& handle)
 	mark_image_dirty(handle.id);
 }
 
-void MemoryManager::begin_frame(uint32_t frame_index)
+void MemoryManager::begin_frame()
 {
 	global_frame_counter++;
 	flush_pending_destructions(false);
+}
 
+void MemoryManager::write_descriptors(uint32_t frame_index)
+{
 	std::vector<uint32_t>& dirty_buffers = pending_buffer_writes[frame_index];
 	if (!dirty_buffers.empty())
 	{

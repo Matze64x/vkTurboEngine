@@ -78,8 +78,7 @@ private:
 	friend class Engine;
 	AccelerationStructureBuilder(const VulkanMainContext& vmc, MemoryManager& memory_manager);
 	bool has_frame_work() const;
-	// Records the builds into cb. Before MemoryManager::begin_frame(), so that a recreated TLAS is
-	// usable in the frame.
+	// Records the builds into cb.
 	void begin_frame(vk::CommandBuffer& cb, uint32_t frame_index);
 
 	ScratchBuffer create_scratch_buffer(const std::string& buffer_name, vk::DeviceSize build_scratch_size);

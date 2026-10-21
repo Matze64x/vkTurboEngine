@@ -42,7 +42,8 @@ private:
 	void destruct();
 	void flush_pending_destructions(bool force = false);
 	const vk::DescriptorSetLayout& get_bindless_set_layout() const { return bindless_set_layout; }
-	void begin_frame(uint32_t frame_index);
+	void begin_frame();
+	void write_descriptors(uint32_t frame_index);
 	void bind_bindless_set(vk::CommandBuffer cb, vk::PipelineBindPoint bind_point, const vk::PipelineLayout& pipeline_layout, uint32_t frame_index) const;
 
 	static constexpr uint32_t max_bindless_images = 65536;

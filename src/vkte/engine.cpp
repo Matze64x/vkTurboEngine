@@ -91,6 +91,7 @@ void Engine::bind(vk::CommandBuffer cb, PipelineHandle pipeline, DescriptorSetsH
 void Engine::begin_frame()
 {
 	command.begin_frame(current_frame);
+	memory_manager.begin_frame();
 	bool has_frame_work = false;
 	for (const FrameWork* frame_work : frame_works) has_frame_work |= frame_work->has_frame_work();
 	for (const std::unique_ptr<AccelerationStructureBuilder>& builder : acceleration_structure_builders) has_frame_work |= builder && builder->has_frame_work();
@@ -118,7 +119,7 @@ void Engine::begin_frame()
 		command.submit_compute(vk::SubmitInfo2({}, {}, cbsi, {}));
 		command.wait_for_compute_submissions();
 	}
-	memory_manager.begin_frame(current_frame);
+	memory_manager.write_descriptors(current_frame);
 }
 
 void Engine::register_frame_work(FrameWork& frame_work)
