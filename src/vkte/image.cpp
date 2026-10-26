@@ -3,13 +3,13 @@
 #include <cmath>
 #include <cstring>
 #include <format>
+#include <vulkan/vulkan_format_traits.hpp>
 #include "vkte/command.hpp"
 #include "vkte/vkte_log.hpp"
 #include "vkte/vulkan_main_context.hpp"
 
 namespace vkte
 {
-static constexpr uint32_t bytes_per_pixel = 4;
 
 static vk::ImageCreateFlags get_image_create_flags(vk::ImageViewType view_type)
 {
@@ -90,7 +90,7 @@ void perform_image_layout_transition(vk::CommandBuffer& cb, const std::vector<Im
 	cb.pipelineBarrier2(dep);
 }
 
-Image::Image(const VulkanMainContext& vmc, Command& command, const Settings& settings) : vmc(vmc), format(settings.format), w(settings.width), h(settings.height), d(settings.depth), mip_levels(settings.use_mip_maps ? uint32_t(std::floor(std::log2(std::max({settings.width, settings.height, settings.depth})))) + 1 : 1), layer_count(settings.depth > 1 || settings.initial_data.empty() ? settings.layer_count : uint32_t(settings.initial_data.size()))
+Image::Image(const VulkanMainContext& vmc, Command& command, const Settings& settings) : vmc(vmc), format(settings.format), component_mapping(settings.component_mapping), w(settings.width), h(settings.height), d(settings.depth), mip_levels(settings.use_mip_maps ? uint32_t(std::floor(std::log2(std::max({settings.width, settings.height, settings.depth})))) + 1 : 1), layer_count(settings.depth > 1 || settings.initial_data.empty() ? settings.layer_count : uint32_t(settings.initial_data.size()))
 {
 	VKTE_ASSERT(settings.width > 0 && settings.height > 0 && settings.depth > 0, "vkte: Image::Settings::width/height/depth must not be 0");
 	VKTE_ASSERT(settings.usage_flags, "vkte: Image::Settings::usage_flags must not be empty");
@@ -114,7 +114,7 @@ Image::Image(const VulkanMainContext& vmc, Command& command, const Settings& set
 		}
 	}
 
-	byte_size = vk::DeviceSize(w) * h * d * bytes_per_pixel * layer_count;
+	byte_size = vk::DeviceSize(w) * h * d * vk::blockSize(format) * layer_count;
 
 	if (settings.initial_data.empty())
 	{
@@ -126,10 +126,10 @@ Image::Image(const VulkanMainContext& vmc, Command& command, const Settings& set
 	{
 		VKTE_ASSERT(settings.depth == 1 || settings.initial_data.size() == settings.depth, "vkte: Image::Settings::initial_data must have exactly `depth` entries (one per Z-slice) for a 3D image");
 
-		const std::size_t expected_entry_byte_size = std::size_t(w) * h * bytes_per_pixel;
+		const std::size_t expected_entry_byte_size = std::size_t(w) * h * vk::blockSize(format);
 		for (const std::span<const std::byte>& entry_data : settings.initial_data)
 		{
-			VKTE_ASSERT(entry_data.size() == expected_entry_byte_size, std::format("vkte: Image::Settings::initial_data entry has {} bytes, expected width*height*4 = {}", entry_data.size(), expected_entry_byte_size));
+			VKTE_ASSERT(entry_data.size() == expected_entry_byte_size, std::format("vkte: Image::Settings::initial_data entry has {} bytes, expected width * height * {} = {}", entry_data.size(), vk::blockSize(format), expected_entry_byte_size));
 		}
 
 		std::vector<std::byte> concatenated_data(byte_size);
@@ -267,7 +267,7 @@ void Image::create_image_from_data(const std::byte* data, Command& command, Queu
 		mip_levels -= base_mip_map_lvl;
 		w = std::max(1u, uint32_t(w / std::pow(2, base_mip_map_lvl)));
 		h = std::max(1u, uint32_t(h / std::pow(2, base_mip_map_lvl)));
-		byte_size = vk::DeviceSize(w) * h * bytes_per_pixel * layer_count;
+		byte_size = vk::DeviceSize(w) * h * vk::blockSize(format) * layer_count;
 
 		// create image with reduced resolution by blitting
 		command.run_one_time_graphics([&](vk::CommandBuffer& cb) {
@@ -331,6 +331,7 @@ void Image::create_image_view(vk::ImageAspectFlags aspects, vk::ImageViewType im
 	ivci.image = image;
 	ivci.viewType = image_view_type;
 	ivci.format = format;
+	ivci.components = component_mapping;
 	ivci.subresourceRange.aspectMask = aspects;
 	ivci.subresourceRange.baseMipLevel = 0;
 	ivci.subresourceRange.levelCount = mip_levels;

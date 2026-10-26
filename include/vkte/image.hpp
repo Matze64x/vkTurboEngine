@@ -58,6 +58,7 @@ public:
 		uint32_t base_mip_map_lvl = 0;
 		Queues queues{};
 		vk::ImageViewType image_view_type = vk::ImageViewType::e2D;
+		vk::ComponentMapping component_mapping{};
 		bool image_view_required = true;
 		uint32_t layer_count = 1;
 		std::vector<std::span<const std::byte>> initial_data{};
@@ -84,6 +85,7 @@ public:
 private:
 	const VulkanMainContext& vmc;
 	vk::Format format = vk::Format::eR8G8B8A8Unorm;
+	vk::ComponentMapping component_mapping;
 	uint32_t w, h, d;
 	uint32_t mip_levels;
 	uint32_t layer_count;
