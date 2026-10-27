@@ -46,6 +46,13 @@ void copy_image(vk::CommandBuffer& cb, vk::Image& src, vk::Image& dst, uint32_t 
 class Image
 {
 public:
+	struct SamplerSettings
+	{
+		vk::Filter filter = vk::Filter::eLinear;
+		vk::SamplerAddressMode address_mode_u = vk::SamplerAddressMode::eRepeat;
+		vk::SamplerAddressMode address_mode_v = vk::SamplerAddressMode::eRepeat;
+	};
+
 	struct Settings
 	{
 		uint32_t width = 0;
@@ -59,6 +66,8 @@ public:
 		Queues queues{};
 		vk::ImageViewType image_view_type = vk::ImageViewType::e2D;
 		vk::ComponentMapping component_mapping{};
+		// for images with eSampled usage
+		SamplerSettings sampler{};
 		bool image_view_required = true;
 		uint32_t layer_count = 1;
 		std::vector<std::span<const std::byte>> initial_data{};
@@ -71,7 +80,7 @@ public:
 	Image& operator=(const Image&) = delete;
 	Image(Image&&) = delete;
 	Image& operator=(Image&&) = delete;
-	void create_sampler(vk::Filter filter = vk::Filter::eLinear, vk::SamplerAddressMode sampler_address_mode = vk::SamplerAddressMode::eRepeat, bool enable_anisotropy = true);
+	void create_sampler(const SamplerSettings& sampler_settings, bool enable_anisotropy = true);
 	void transition_image_layout(Command& command, vk::ImageLayout new_layout, vk::PipelineStageFlags2 src_stage_flags, vk::PipelineStageFlags2 dst_stage_flags, vk::AccessFlags2 src_access_flags, vk::AccessFlags2 dst_access_flags);
 	VmaAllocation get_allocation() const;
 	VmaAllocationInfo get_allocation_info() const;
@@ -86,6 +95,7 @@ private:
 	const VulkanMainContext& vmc;
 	vk::Format format = vk::Format::eR8G8B8A8Unorm;
 	vk::ComponentMapping component_mapping;
+	SamplerSettings sampler_settings;
 	uint32_t w, h, d;
 	uint32_t mip_levels;
 	uint32_t layer_count;

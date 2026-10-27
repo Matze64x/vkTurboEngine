@@ -90,7 +90,7 @@ void perform_image_layout_transition(vk::CommandBuffer& cb, const std::vector<Im
 	cb.pipelineBarrier2(dep);
 }
 
-Image::Image(const VulkanMainContext& vmc, Command& command, const Settings& settings) : vmc(vmc), format(settings.format), component_mapping(settings.component_mapping), w(settings.width), h(settings.height), d(settings.depth), mip_levels(settings.use_mip_maps ? uint32_t(std::floor(std::log2(std::max({settings.width, settings.height, settings.depth})))) + 1 : 1), layer_count(settings.depth > 1 || settings.initial_data.empty() ? settings.layer_count : uint32_t(settings.initial_data.size()))
+Image::Image(const VulkanMainContext& vmc, Command& command, const Settings& settings) : vmc(vmc), format(settings.format), component_mapping(settings.component_mapping), sampler_settings(settings.sampler), w(settings.width), h(settings.height), d(settings.depth), mip_levels(settings.use_mip_maps ? uint32_t(std::floor(std::log2(std::max({settings.width, settings.height, settings.depth})))) + 1 : 1), layer_count(settings.depth > 1 || settings.initial_data.empty() ? settings.layer_count : uint32_t(settings.initial_data.size()))
 {
 	VKTE_ASSERT(settings.width > 0 && settings.height > 0 && settings.depth > 0, "vkte: Image::Settings::width/height/depth must not be 0");
 	VKTE_ASSERT(settings.usage_flags, "vkte: Image::Settings::usage_flags must not be empty");
@@ -121,6 +121,7 @@ Image::Image(const VulkanMainContext& vmc, Command& command, const Settings& set
 		std::tie(image, vmaa) = create_image(settings.queues, settings.usage_flags, settings.sample_count, settings.use_mip_maps, format, vk::Extent3D(w, h, d), layer_count, get_image_create_flags(settings.image_view_type), settings.location);
 		layout = vk::ImageLayout::eUndefined;
 		if (settings.image_view_required) create_image_view(default_aspect_for_format(format), settings.image_view_type);
+		if (settings.usage_flags & vk::ImageUsageFlagBits::eSampled) create_sampler(sampler_settings);
 	}
 	else
 	{
@@ -322,7 +323,7 @@ void Image::create_image_from_data(const std::byte* data, Command& command, Queu
 		mip_levels > 1 ? generate_mipmaps(command) : transition_image_layout(command, vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits2::eTransfer, vk::PipelineStageFlagBits2::eFragmentShader, vk::AccessFlagBits2::eTransferWrite, vk::AccessFlagBits2::eShaderRead);
 	}
 	create_image_view(vk::ImageAspectFlagBits::eColor, image_view_type);
-	create_sampler();
+	if (usage_flags & vk::ImageUsageFlagBits::eSampled) create_sampler(sampler_settings);
 }
 
 void Image::create_image_view(vk::ImageAspectFlags aspects, vk::ImageViewType image_view_type)
@@ -340,14 +341,14 @@ void Image::create_image_view(vk::ImageAspectFlags aspects, vk::ImageViewType im
 	view = vmc.logical_device.get().createImageView(ivci);
 }
 
-void Image::create_sampler(vk::Filter filter, vk::SamplerAddressMode sampler_address_mode, bool enable_anisotropy)
+void Image::create_sampler(const SamplerSettings& sampler_settings, bool enable_anisotropy)
 {
 	vk::SamplerCreateInfo sci;
-	sci.magFilter = filter;
-	sci.minFilter = filter;
-	sci.addressModeU = sampler_address_mode;
-	sci.addressModeV = sampler_address_mode;
-	sci.addressModeW = sampler_address_mode;
+	sci.magFilter = sampler_settings.filter;
+	sci.minFilter = sampler_settings.filter;
+	sci.addressModeU = sampler_settings.address_mode_u;
+	sci.addressModeV = sampler_settings.address_mode_v;
+	sci.addressModeW = sampler_settings.address_mode_u;
 	if (enable_anisotropy)
 	{
 		sci.anisotropyEnable = VK_TRUE;
