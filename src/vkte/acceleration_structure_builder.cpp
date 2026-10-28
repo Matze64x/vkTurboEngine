@@ -73,7 +73,7 @@ BLASHandle AccelerationStructureBuilder::add_blas(const std::string& buffer_name
 		blas.primitive_counts.push_back(asbri.primitiveCount);
 
 		vk::AccelerationStructureGeometryKHR asg;
-		asg.flags = vk::GeometryFlagBitsKHR::eOpaque;
+		asg.flags = blas_data.geometry_flags.empty() ? vk::GeometryFlagBitsKHR::eOpaque : blas_data.geometry_flags[i];
 		asg.geometryType = vk::GeometryTypeKHR::eTriangles;
 		asg.geometry.triangles.vertexFormat = vk::Format::eR32G32B32Sfloat;
 		asg.geometry.triangles.vertexData = vertex_buffer_device_adress;
@@ -192,13 +192,13 @@ void AccelerationStructureBuilder::remove_blas(BLASHandle handle)
 	free_blas_indices.push_back(blas_idx);
 }
 
-InstanceHandle AccelerationStructureBuilder::add_instance(BLASHandle blas, const vk::TransformMatrixKHR& M, uint32_t custom_index, uint8_t mask)
+InstanceHandle AccelerationStructureBuilder::add_instance(BLASHandle blas, const vk::TransformMatrixKHR& M, uint32_t custom_index, uint8_t mask, vk::GeometryInstanceFlagsKHR flags)
 {
 	vk::AccelerationStructureInstanceKHR instance;
 	instance.transform = M;
 	instance.accelerationStructureReference = bottom_level_as[get_index(blas)].device_address;
 	instance.instanceCustomIndex = custom_index;
-	instance.setFlags(vk::GeometryInstanceFlagBitsKHR::eTriangleFacingCullDisable);
+	instance.setFlags(flags);
 	instance.mask = mask;
 	tlas_outdated = true;
 	if (free_instance_indices.empty())

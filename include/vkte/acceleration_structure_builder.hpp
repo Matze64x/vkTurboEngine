@@ -24,6 +24,8 @@ public:
 		vk::DeviceSize vertex_stride;
 		std::vector<uint32_t> index_offsets = {0};
 		std::vector<uint32_t> index_counts = {};
+		// per geometry; opaque without them
+		std::vector<vk::GeometryFlagsKHR> geometry_flags = {};
 		bool dynamic = false;
 	};
 	struct AABBBLASData
@@ -38,7 +40,7 @@ public:
 	// rebuilds a dynamic BLAS from its buffers
 	void update_blas(BLASHandle blas);
 	void remove_blas(BLASHandle blas);
-	InstanceHandle add_instance(BLASHandle blas, const vk::TransformMatrixKHR& M, uint32_t custom_index, uint8_t mask = 0xFF);
+	InstanceHandle add_instance(BLASHandle blas, const vk::TransformMatrixKHR& M, uint32_t custom_index, uint8_t mask = 0xFF, vk::GeometryInstanceFlagsKHR flags = vk::GeometryInstanceFlagBitsKHR::eTriangleFacingCullDisable);
 	void update_instance(InstanceHandle instance, const vk::TransformMatrixKHR& M);
 	void set_instance_blas(InstanceHandle instance, BLASHandle blas);
 	void remove_instance(InstanceHandle instance);
