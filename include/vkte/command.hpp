@@ -1,6 +1,8 @@
 #pragma once
 
 #include <array>
+#include <atomic>
+#include <vector>
 #include <functional>
 #include "vulkan/vulkan.hpp"
 #include "vkte/command_pool.hpp"
@@ -31,6 +33,15 @@ public:
 	void submit_compute(vk::ArrayProxy<const vk::SubmitInfo2> const& submit_infos);
 	void submit_transfer(vk::ArrayProxy<const vk::SubmitInfo2> const& submit_infos);
 
+	// per queue type, which other threads may also ask for
+	struct TimelineProgress
+	{
+		vk::Semaphore semaphore;
+		// what the semaphore reaches once the submissions so far are done
+		uint64_t submitted_value;
+	};
+	std::vector<TimelineProgress> get_timeline_progress() const;
+
 private:
 	enum Type
 	{
@@ -56,6 +67,8 @@ private:
 	std::vector<vk::CommandBuffer> command_buffers;
 	std::array<vk::Semaphore, TYPE_COUNT> timeline_semaphores{};
 	std::array<uint64_t, TYPE_COUNT> timeline_values{};
+	// timeline_values once submitted, for get_timeline_progress()
+	std::array<std::atomic<uint64_t>, TYPE_COUNT> submitted_values{};
 	// per frame in flight, the timeline values its submissions signaled last
 	std::array<std::array<uint64_t, TYPE_COUNT>, frames_in_flight> frame_end_values{};
 	std::array<vk::SemaphoreSubmitInfo, TYPE_COUNT> frame_waits{};

@@ -26,7 +26,7 @@ public:
 	explicit ShaderRepository(ThreadManager& thread_manager);
 	~ShaderRepository();
 
-	void construct(const vk::Device& device, const std::string& shader_root_dir);
+	void construct(const vk::Device& device, const std::string& shader_root_dir, bool shader_debug_info);
 	void destruct();
 	bool compile_all(const std::vector<const Shader*>& shaders);
 	bool recompile_all();
@@ -41,6 +41,7 @@ public:
 private:
 	vk::Device device;
 	std::string shader_root_dir;
+	bool shader_debug_info = false;
 	// one Slang global session per ThreadManager worker, created lazily by whichever worker first needs it
 	std::vector<Slang::ComPtr<slang::IGlobalSession>> global_sessions;
 	std::unordered_map<std::string, std::vector<uint32_t>> spirv_code;

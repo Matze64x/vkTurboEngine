@@ -53,6 +53,7 @@ void VulkanMainContext::construct(const Features& features, std::unique_ptr<Wind
 		if (features.gpu_assisted_validation) validation_feature_enables.push_back(vk::ValidationFeatureEnableEXT::eGpuAssisted);
 		if (features.synchronization_validation) validation_feature_enables.push_back(vk::ValidationFeatureEnableEXT::eSynchronizationValidation);
 		if (features.best_practices_validation) validation_feature_enables.push_back(vk::ValidationFeatureEnableEXT::eBestPractices);
+		if (features.shader_printf) validation_feature_enables.push_back(vk::ValidationFeatureEnableEXT::eDebugPrintf);
 	}
 	instance.construct(instance_extensions, validation_layers, validation_feature_enables);
 	VULKAN_HPP_DEFAULT_DISPATCHER.init(instance.get());
@@ -138,6 +139,8 @@ void VulkanMainContext::setup_debug_messenger()
 {
 	vk::DebugUtilsMessengerCreateInfoEXT dumci;
 	dumci.messageSeverity = features.message_severity;
+	// the validation layer reports shaders' printf as info messages
+	if (features.shader_printf) dumci.messageSeverity |= vk::DebugUtilsMessageSeverityFlagBitsEXT::eInfo;
 	dumci.messageType = vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral | vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation | vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance;
 	dumci.pfnUserCallback = debug_callback;
 	debug_messenger = instance.get().createDebugUtilsMessengerEXT(dumci, nullptr, VULKAN_HPP_DEFAULT_DISPATCHER);

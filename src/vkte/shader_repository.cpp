@@ -49,15 +49,17 @@ static std::string shader_key(const Shader& shader)
 	return shader.name + "::" + shader.entry_point;
 }
 
-static Slang::ComPtr<slang::ISession> create_session(Slang::ComPtr<slang::IGlobalSession> global_session, const std::string& shader_root_dir)
+static Slang::ComPtr<slang::ISession> create_session(Slang::ComPtr<slang::IGlobalSession> global_session, const std::string& shader_root_dir, bool debug_information)
 {
-	std::array<slang::CompilerOptionEntry, 2> option_entries{};
+	std::array<slang::CompilerOptionEntry, 3> option_entries{};
 	// enable all capabilities to prevent any warnings about implicit upgrades
 	option_entries[0].name = slang::CompilerOptionName::Capability;
 	option_entries[0].value.intValue0 = global_session->findCapability("all");
 	// keep the entry point's own name in the SPIR-V (Slang renames it to "main" otherwise), since that name is what the pipeline asks for
 	option_entries[1].name = slang::CompilerOptionName::VulkanUseEntryPointName;
 	option_entries[1].value.intValue0 = 1;
+	option_entries[2].name = slang::CompilerOptionName::DebugInformation;
+	option_entries[2].value.intValue0 = debug_information ? SLANG_DEBUG_INFO_LEVEL_MAXIMAL : SLANG_DEBUG_INFO_LEVEL_NONE;
 
 	slang::TargetDesc target_desc{};
 	target_desc.format = SLANG_SPIRV;
@@ -145,15 +147,30 @@ static Slang::ComPtr<slang::IBlob> compile_to_spirv(const Shader& shader, slang:
 	return spirv_blob;
 }
 
+static void write_spirv(const std::filesystem::path& dir, const std::string& key, const std::vector<uint32_t>& spirv)
+{
+	std::filesystem::create_directories(dir);
+	std::string name = key;
+	for (char& c : name)
+	{
+		if (c == '/' || c == ':') c = '_';
+	}
+	const std::filesystem::path path = dir / (name + ".spv");
+	std::ofstream file(path, std::ios::binary);
+	file.write(reinterpret_cast<const char*>(spirv.data()), std::streamsize(spirv.size() * sizeof(uint32_t)));
+	if (!file) VKTE_ERROR("vkte: Failed to write \"{}\"", path.string());
+}
+
 ShaderRepository::ShaderRepository(ThreadManager& thread_manager) : thread_manager(thread_manager)
 {}
 
 ShaderRepository::~ShaderRepository() = default;
 
-void ShaderRepository::construct(const vk::Device& device, const std::string& shader_root_dir)
+void ShaderRepository::construct(const vk::Device& device, const std::string& shader_root_dir, bool shader_debug_info)
 {
 	this->device = device;
 	this->shader_root_dir = shader_root_dir;
+	this->shader_debug_info = shader_debug_info;
 	global_sessions.resize(thread_manager.worker_count());
 }
 
@@ -196,7 +213,7 @@ bool ShaderRepository::recompile_all()
 		{
 			Slang::ComPtr<slang::IGlobalSession>& global_session = global_sessions[worker_index];
 			if (!global_session) VKTE_ASSERT(SLANG_SUCCEEDED(slang::createGlobalSession(global_session.writeRef())), "vkte: Failed to create Slang global session");
-			Slang::ComPtr<slang::ISession> session = create_session(global_session, shader_root_dir);
+			Slang::ComPtr<slang::ISession> session = create_session(global_session, shader_root_dir, shader_debug_info);
 			Slang::ComPtr<slang::IBlob> spirv = compile_to_spirv(*shader, *session, shader_root_dir);
 			if (!spirv) return {};
 
@@ -223,7 +240,11 @@ bool ShaderRepository::recompile_all()
 	if (!success) return false;
 
 	destruct();
-	for (CompileResult& result : results) spirv_code[std::move(result.key)] = std::move(result.spirv);
+	for (CompileResult& result : results)
+	{
+		if (shader_debug_info) write_spirv(std::filesystem::path(shader_root_dir) / "debug_spirv", result.key, result.spirv);
+		spirv_code[std::move(result.key)] = std::move(result.spirv);
+	}
 	return true;
 }
 

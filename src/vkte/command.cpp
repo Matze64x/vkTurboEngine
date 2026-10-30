@@ -84,6 +84,7 @@ void Command::run_one_time(const std::function<void(vk::CommandBuffer&)>& record
 	const vk::CommandBufferSubmitInfo cbsi(cb);
 	const vk::SemaphoreSubmitInfo signal_info(timeline_semaphores[type], value, vk::PipelineStageFlagBits2::eAllCommands);
 	queue.submit2(vk::SubmitInfo2({}, {}, cbsi, signal_info));
+	submitted_values[type] = value;
 	const vk::SemaphoreWaitInfo swi({}, timeline_semaphores[type], value);
 	VKTE_CHECK(vmc.logical_device.get().waitSemaphores(swi, uint64_t(-1)), "vkte: Failed to wait for timeline semaphore!");
 	cb.reset();
@@ -122,6 +123,14 @@ void Command::submit(Type type, const vk::Queue& queue, vk::ArrayProxy<const vk:
 		infos[i].setSignalSemaphoreInfos(signals[i]);
 	}
 	queue.submit2(infos);
+	submitted_values[type] = timeline_values[type];
+}
+
+std::vector<Command::TimelineProgress> Command::get_timeline_progress() const
+{
+	std::vector<TimelineProgress> progress;
+	for (uint32_t i = 0; i < TYPE_COUNT; i++) progress.push_back(TimelineProgress{.semaphore = timeline_semaphores[i], .submitted_value = submitted_values[i]});
+	return progress;
 }
 
 void Command::submit_graphics(vk::ArrayProxy<const vk::SubmitInfo2> const& submit_infos)

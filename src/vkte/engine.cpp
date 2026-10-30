@@ -20,7 +20,7 @@ Engine::Engine(const EngineSettings& settings) : command(vmc), storage(vmc, comm
 	command.construct();
 	for (CommandBufferHandle& cb : frame_work_cbs) cb = command.add_command_buffer(QueueFamilyFlags::Compute);
 	memory_manager.construct();
-	shader_repository.construct(vmc.logical_device.get(), settings.shader_root_dir);
+	shader_repository.construct(vmc.logical_device.get(), settings.shader_root_dir, settings.features.shader_debug_info);
 	if (window)
 	{
 		SwapchainSettings swapchain_settings = Swapchain::choose_settings(vmc.physical_device, *window, vmc.surface, settings.present_settings.mode);

@@ -21,6 +21,10 @@ struct Features
 	vk::DebugUtilsMessageSeverityFlagsEXT message_severity = vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning | vk::DebugUtilsMessageSeverityFlagBitsEXT::eError;
 	bool swapchain = false;
 	DeviceFeatures device_features;
+	// compiles the shaders with debug information and writes their SPIR-V to <shader_root_dir>/debug_spirv
+	bool shader_debug_info = false;
+	// lets shaders printf through the validation layer; only with khronos_validation
+	bool shader_printf = false;
 };
 
 class VulkanMainContext
