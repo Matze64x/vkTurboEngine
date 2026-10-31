@@ -4,6 +4,7 @@
 #include "vkte/vkte_log.hpp"
 #include <array>
 #include <fstream>
+#include <optional>
 #include <sstream>
 #include <string_view>
 
@@ -123,78 +124,125 @@ bool key_from_name(std::string_view name, Key& out)
 }
 } // namespace
 
-EventHandler::EventHandler() : pressed_keys(get_idx(Key::Size), false), released_keys(get_idx(Key::Size), false), key_remap(get_idx(Key::Size))
+EventHandler::EventHandler() : down_keys(get_idx(Key::Size), false), pressed_keys(get_idx(Key::Size), false), released_keys(get_idx(Key::Size), false), key_remap(get_idx(Key::Size))
 {
 	for (uint32_t i = 0; i < get_idx(Key::Size); i++) key_remap[i] = static_cast<Key>(i);
 	load_key_remap("vkte_key_remap");
 }
 
-void EventHandler::dispatch_event(SDL_Event e)
+void EventHandler::begin_frame()
+{
+	for (uint32_t i = 0; i < get_idx(Key::Size); i++)
+	{
+		pressed_keys[i] = false;
+		released_keys[i] = false;
+	}
+	mouse_motion = MouseVector();
+	mouse_wheel_motion = MouseVector();
+}
+
+static std::optional<Key> get_mouse_button_key(uint8_t button)
+{
+	if (button == SDL_BUTTON_LEFT) return Key::MouseLeft;
+	if (button == SDL_BUTTON_MIDDLE) return Key::MouseMiddle;
+	if (button == SDL_BUTTON_RIGHT) return Key::MouseRight;
+	return std::nullopt;
+}
+
+void EventHandler::dispatch_event(const SDL_Event& e)
 {
 	ImGui_ImplSDL3_ProcessEvent(&e);
-	if (ImGui::GetIO().WantCaptureMouse || ImGui::GetIO().WantCaptureKeyboard)
-	{
-		return;
-	}
+	const bool is_mouse_captured = ImGui::GetIO().WantCaptureMouse;
+	const bool is_keyboard_captured = ImGui::GetIO().WantCaptureKeyboard;
+	Key key;
 	switch (e.type)
 	{
 		case SDL_EVENT_MOUSE_MOTION:
-			mouse_motion_x = e.motion.xrel;
-			mouse_motion_y = e.motion.yrel;
+			mouse_position = MouseVector{e.motion.x, e.motion.y};
+			if (is_mouse_captured) break;
+			mouse_motion.x += e.motion.xrel;
+			mouse_motion.y += e.motion.yrel;
 			break;
 		case SDL_EVENT_MOUSE_WHEEL:
-			mouse_wheel_motion_x = e.wheel.x;
-			mouse_wheel_motion_y = e.wheel.y;
+			if (is_mouse_captured) break;
+			mouse_wheel_motion.x += e.wheel.x;
+			mouse_wheel_motion.y += e.wheel.y;
+			break;
+		case SDL_EVENT_MOUSE_BUTTON_DOWN:
+		case SDL_EVENT_MOUSE_BUTTON_UP:
+		{
+			mouse_position = MouseVector{e.button.x, e.button.y};
+			const std::optional<Key> button_key = get_mouse_button_key(e.button.button);
+			if (!button_key) break;
+			if (e.type == SDL_EVENT_MOUSE_BUTTON_UP) release_key(*button_key);
+			else if (!is_mouse_captured) press_key(*button_key);
+			break;
+		}
+		case SDL_EVENT_KEY_DOWN:
+			if (!e.key.repeat && !is_keyboard_captured && key_from_sdl_keycode(e.key.key, key)) press_key(key);
+			break;
+		case SDL_EVENT_KEY_UP:
+			if (key_from_sdl_keycode(e.key.key, key)) release_key(key);
+			break;
+		// the window gets no releases while another one has the focus
+		case SDL_EVENT_WINDOW_FOCUS_LOST:
+			release_all_keys();
 			break;
 	}
-	switch (e.button.button)
-	{
-		case SDL_BUTTON_LEFT:
-			apply_key_event(Key::MouseLeft, e.type);
-			break;
-		case SDL_BUTTON_MIDDLE:
-			apply_key_event(Key::MouseMiddle, e.type);
-			break;
-		case SDL_BUTTON_RIGHT:
-			apply_key_event(Key::MouseRight, e.type);
-			break;
-	}
-	Key key;
-	if (key_from_sdl_keycode(e.key.key, key)) apply_key_event(key, e.type);
 }
 
-bool EventHandler::is_key_pressed(Key key) const
+bool EventHandler::is_key_down(Key key) const
+{
+	return down_keys[get_idx(key)];
+}
+
+bool EventHandler::was_key_pressed(Key key) const
 {
 	return pressed_keys[get_idx(key)];
 }
 
-bool EventHandler::is_key_released(Key key) const
+bool EventHandler::was_key_released(Key key) const
 {
 	return released_keys[get_idx(key)];
 }
 
-void EventHandler::set_pressed_key(Key key, bool value)
+MouseVector EventHandler::get_mouse_position() const
 {
-	pressed_keys[get_idx(key)] = value;
+	return mouse_position;
 }
 
-void EventHandler::set_released_key(Key key, bool value)
+MouseVector EventHandler::get_mouse_motion() const
 {
-	released_keys[get_idx(key)] = value;
+	return mouse_motion;
 }
 
-void EventHandler::apply_key_event(Key k, uint32_t et)
+MouseVector EventHandler::get_mouse_wheel_motion() const
 {
-	k = remap_key(k);
-	if (et == SDL_EVENT_KEY_DOWN || et == SDL_EVENT_MOUSE_BUTTON_DOWN)
+	return mouse_wheel_motion;
+}
+
+void EventHandler::press_key(Key key)
+{
+	key = remap_key(key);
+	down_keys[get_idx(key)] = true;
+	pressed_keys[get_idx(key)] = true;
+}
+
+// a key whose press didn't count isn't released either
+void EventHandler::release_key(Key key)
+{
+	key = remap_key(key);
+	if (!down_keys[get_idx(key)]) return;
+	down_keys[get_idx(key)] = false;
+	released_keys[get_idx(key)] = true;
+}
+
+void EventHandler::release_all_keys()
+{
+	for (uint32_t i = 0; i < get_idx(Key::Size); i++)
 	{
-		pressed_keys[get_idx(k)] = true;
-		released_keys[get_idx(k)] = false;
-	}
-	else if (et == SDL_EVENT_KEY_UP || et == SDL_EVENT_MOUSE_BUTTON_UP)
-	{
-		pressed_keys[get_idx(k)] = false;
-		released_keys[get_idx(k)] = true;
+		if (down_keys[i]) released_keys[i] = true;
+		down_keys[i] = false;
 	}
 }
 

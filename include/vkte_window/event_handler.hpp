@@ -70,26 +70,44 @@ enum class Key : uint32_t
 	Size = 59
 };
 
+struct MouseVector
+{
+	float x = 0.0f;
+	float y = 0.0f;
+};
+
+// The keys and mouse buttons by what happened to them, so that callers don't handle SDL events themselves. Events that
+// ImGui wants (mouse events over its windows, keyboard events while it takes text) don't count, except releasing a key
+// whose press counted, so that no key stays down.
 class EventHandler
 {
 public:
-  float mouse_motion_x;
-  float mouse_motion_y;
-  float mouse_wheel_motion_x;
-  float mouse_wheel_motion_y;
-
 	EventHandler();
-	void dispatch_event(SDL_Event e);
-	bool is_key_pressed(Key key) const;
-	bool is_key_released(Key key) const;
-	void set_pressed_key(Key key, bool value);
-	void set_released_key(Key key, bool value);
+	// clears what happened during the previous frame; called before the frame's events are dispatched
+	void begin_frame();
+	void dispatch_event(const SDL_Event& e);
+	bool is_key_down(Key key) const;
+	// during the frame
+	bool was_key_pressed(Key key) const;
+	bool was_key_released(Key key) const;
+	// in window coordinates, the latest one
+	MouseVector get_mouse_position() const;
+	// summed over the frame
+	MouseVector get_mouse_motion() const;
+	MouseVector get_mouse_wheel_motion() const;
 
 private:
+	std::vector<bool> down_keys;
 	std::vector<bool> pressed_keys;
 	std::vector<bool> released_keys;
 	std::vector<Key> key_remap;
-	void apply_key_event(Key k, uint32_t et);
+	MouseVector mouse_position;
+	MouseVector mouse_motion;
+	MouseVector mouse_wheel_motion;
+
+	void press_key(Key key);
+	void release_key(Key key);
+	void release_all_keys();
 	static uint32_t get_idx(Key key);
 	Key remap_key(Key key) const;
 	void load_key_remap(const std::string& path);
