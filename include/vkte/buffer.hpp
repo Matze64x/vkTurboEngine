@@ -59,7 +59,7 @@ public:
 		update_data_bytes(&data, sizeof(T));
 	}
 
-	void obtain_data_bytes(void* data, std::size_t byte_count);
+	void obtain_data_bytes(void* data, std::size_t byte_count, std::size_t offset = 0);
 
 	template<class T>
 	std::vector<T> obtain_data(std::size_t element_count)
@@ -82,6 +82,14 @@ public:
 	{
 		if (output.size() < element_count) output.resize(element_count);
 		obtain_data_bytes(output.data(), sizeof(T) * element_count);
+	}
+
+	template<class T>
+	T obtain_element(std::size_t index)
+	{
+		T data;
+		obtain_data_bytes(&data, sizeof(T), sizeof(T) * index);
+		return data;
 	}
 
 	template<class T>

@@ -73,10 +73,11 @@ void Buffer::update_data_bytes(const void* data, std::size_t byte_count, std::si
 	apply_memory_operation(offset, byte_count, TransferDirection::HostToBuffer, [&](void* mapped_mem) { memcpy(mapped_mem, data, byte_count); });
 }
 
-void Buffer::obtain_data_bytes(void* data, std::size_t byte_count)
+void Buffer::obtain_data_bytes(void* data, std::size_t byte_count, std::size_t offset)
 {
 	VKTE_ASSERT(byte_count <= byte_size, "vkte: Cannot get more bytes than size of buffer!");
-	apply_memory_operation(0, byte_count, TransferDirection::BufferToHost, [&](void* mapped_mem) { memcpy(data, mapped_mem, byte_count); });
+	VKTE_ASSERT(offset + byte_count <= byte_size, "vkte: Trying to read outside of the buffer!");
+	apply_memory_operation(offset, byte_count, TransferDirection::BufferToHost, [&](void* mapped_mem) { memcpy(data, mapped_mem, byte_count); });
 }
 
 void Buffer::apply_memory_operation(std::size_t offset, std::size_t byte_count, TransferDirection direction, const std::function<void(void*)>& host_op)
