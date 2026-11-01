@@ -343,6 +343,8 @@ void Image::create_image_view(vk::ImageAspectFlags aspects, vk::ImageViewType im
 
 void Image::create_sampler(const SamplerSettings& sampler_settings, bool enable_anisotropy)
 {
+	const vk::FormatFeatureFlags format_features = vmc.physical_device.get().getFormatProperties(format).optimalTilingFeatures;
+	VKTE_ASSERT(sampler_settings.filter != vk::Filter::eLinear || (format_features & vk::FormatFeatureFlagBits::eSampledImageFilterLinear), std::format("vkte: This device can't filter {} images linearly; their SamplerSettings::filter must be eNearest", vk::to_string(format)));
 	vk::SamplerCreateInfo sci;
 	sci.magFilter = sampler_settings.filter;
 	sci.minFilter = sampler_settings.filter;
@@ -363,7 +365,7 @@ void Image::create_sampler(const SamplerSettings& sampler_settings, bool enable_
 	sci.unnormalizedCoordinates = VK_FALSE;
 	sci.compareEnable = VK_FALSE;
 	sci.compareOp = vk::CompareOp::eAlways;
-	sci.mipmapMode = format == vk::Format::eR32Sint ? vk::SamplerMipmapMode::eNearest : vk::SamplerMipmapMode::eLinear;
+	sci.mipmapMode = sampler_settings.filter == vk::Filter::eLinear ? vk::SamplerMipmapMode::eLinear : vk::SamplerMipmapMode::eNearest;
 	sci.mipLodBias = 0.0f;
 	sci.minLod = 0.0f;
 	sci.maxLod = mip_levels;
