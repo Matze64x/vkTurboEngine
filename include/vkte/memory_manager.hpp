@@ -46,9 +46,13 @@ private:
 	void write_descriptors(uint32_t frame_index);
 	void bind_bindless_set(vk::CommandBuffer cb, vk::PipelineBindPoint bind_point, const vk::PipelineLayout& pipeline_layout, uint32_t frame_index) const;
 
-	static constexpr uint32_t max_bindless_images = 65536;
-	static constexpr uint32_t max_bindless_buffers = 65536;
+	// the slots of each kind that the tables first have, doubling whenever a slot doesn't fit
+	static constexpr uint32_t initial_bindless_capacity = 1024;
 
+	// left below the device's descriptor limits for the descriptors that pipelines have besides the bindless images
+	static constexpr uint32_t reserved_descriptor_count = 1024;
+
+	void create_frame_set(uint32_t frame_index);
 	void mark_buffer_dirty(uint32_t index);
 	void mark_image_dirty(uint32_t index);
 	uint64_t resolve_buffer_address(const ResourceHandle& resource);
@@ -61,11 +65,14 @@ private:
 		{}
 		PendingDestruction(vk::AccelerationStructureKHR acceleration_structure, uint64_t requested_at_frame) : requested_at_frame(requested_at_frame), acceleration_structure(acceleration_structure)
 		{}
+		PendingDestruction(vk::DescriptorPool descriptor_pool, uint64_t requested_at_frame) : requested_at_frame(requested_at_frame), descriptor_pool(descriptor_pool)
+		{}
 		ResourceHandle handle;
 		uint64_t requested_at_frame;
 		BufferHandle bindless_buffer;
 		ImageHandle bindless_image;
 		vk::AccelerationStructureKHR acceleration_structure;
+		vk::DescriptorPool descriptor_pool;
 	};
 	uint64_t global_frame_counter = 0;
 	std::queue<PendingDestruction> pending_destructions;
@@ -93,9 +100,15 @@ private:
 	std::unordered_map<std::string, BufferHandle> buffer_names;
 	std::unordered_map<std::string, ImageHandle> image_names;
 
-	uint32_t bindless_image_capacity = max_bindless_images;
+	uint32_t buffer_capacity = initial_bindless_capacity;
+	uint32_t image_capacity = initial_bindless_capacity;
+	// the most the device allows: the address table's size is limited by the storage buffer range, the set layout's image array by the descriptor limits
+	uint32_t max_buffer_capacity = 0;
+	uint32_t max_image_capacity = 0;
+	std::array<uint32_t, frames_in_flight> frame_buffer_capacities{};
+	std::array<uint32_t, frames_in_flight> frame_image_capacities{};
 	vk::DescriptorSetLayout bindless_set_layout;
-	vk::DescriptorPool bindless_pool;
+	std::array<vk::DescriptorPool, frames_in_flight> bindless_pools;
 	std::array<vk::DescriptorSet, frames_in_flight> bindless_sets;
 	std::array<ResourceHandle, frames_in_flight> address_tables;
 	std::array<ResourceHandle, frames_in_flight> buffer_generation_tables;

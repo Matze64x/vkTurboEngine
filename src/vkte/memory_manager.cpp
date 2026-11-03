@@ -1,7 +1,7 @@
 #include "vkte/memory_manager.hpp"
 
-#include <algorithm>
 #include <array>
+#include <span>
 #include "vkte/global_constants.hpp"
 #include "vkte/vkte_log.hpp"
 #include "vkte/vulkan_main_context.hpp"
@@ -26,6 +26,18 @@ static void log_memory_info(const vk::PhysicalDevice& physical_device)
 	}
 }
 
+static ResourceHandle add_table(Storage& storage, const std::string& name, std::span<const std::byte> entries)
+{
+	Buffer::Settings settings;
+	settings.byte_size = entries.size();
+	settings.usage_flags = vk::BufferUsageFlagBits::eStorageBuffer;
+	settings.location = MemoryLocation::BARFallbackHostVisible;
+	settings.queues = QueueFamilyFlags::Graphics | QueueFamilyFlags::Compute | QueueFamilyFlags::Transfer;
+	const ResourceHandle table = storage.add_buffer(name, settings);
+	storage.get_buffer(table).update_data_bytes(entries.data(), entries.size());
+	return table;
+}
+
 void MemoryManager::construct()
 {
 	log_memory_info(vmc.physical_device.get());
@@ -34,13 +46,16 @@ void MemoryManager::construct()
 	vk::PhysicalDeviceProperties2 properties2;
 	properties2.pNext = &vulkan_12_properties;
 	vmc.physical_device.get().getProperties2(&properties2);
-	bindless_image_capacity = std::min({max_bindless_images, vulkan_12_properties.maxDescriptorSetUpdateAfterBindSampledImages, vulkan_12_properties.maxDescriptorSetUpdateAfterBindSamplers});
+	max_buffer_capacity = uint32_t(properties2.properties.limits.maxStorageBufferRange / sizeof(uint64_t));
+	max_image_capacity = std::min({vulkan_12_properties.maxDescriptorSetUpdateAfterBindSampledImages, vulkan_12_properties.maxDescriptorSetUpdateAfterBindSamplers, vulkan_12_properties.maxPerStageDescriptorUpdateAfterBindSampledImages, vulkan_12_properties.maxPerStageDescriptorUpdateAfterBindSamplers, vulkan_12_properties.maxPerStageUpdateAfterBindResources}) - reserved_descriptor_count;
+	buffer_capacity = std::min(buffer_capacity, max_buffer_capacity);
+	image_capacity = std::min(image_capacity, max_image_capacity);
 
 	std::array<vk::DescriptorSetLayoutBinding, 4> bindings{
 		vk::DescriptorSetLayoutBinding{0, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eAll},
 		vk::DescriptorSetLayoutBinding{1, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eAll},
 		vk::DescriptorSetLayoutBinding{2, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eAll},
-		vk::DescriptorSetLayoutBinding{3, vk::DescriptorType::eCombinedImageSampler, bindless_image_capacity, vk::ShaderStageFlagBits::eAll}};
+		vk::DescriptorSetLayoutBinding{3, vk::DescriptorType::eCombinedImageSampler, max_image_capacity, vk::ShaderStageFlagBits::eAll}};
 	std::array<vk::DescriptorBindingFlags, 4> binding_flags{
 		vk::DescriptorBindingFlags{},
 		vk::DescriptorBindingFlags{},
@@ -58,82 +73,70 @@ void MemoryManager::construct()
 	dslci.pNext = &dslbfci;
 	bindless_set_layout = vmc.logical_device.get().createDescriptorSetLayout(dslci);
 
-	std::array<vk::DescriptorPoolSize, 2> pool_sizes{
-		vk::DescriptorPoolSize{vk::DescriptorType::eCombinedImageSampler, bindless_image_capacity * frames_in_flight},
-		vk::DescriptorPoolSize{vk::DescriptorType::eStorageBuffer, 3 * frames_in_flight}};
+	for (uint32_t i = 0; i < frames_in_flight; i++) create_frame_set(i);
+}
+
+// a pending command buffer may still use the frame's old set and tables, so they are destroyed deferred
+void MemoryManager::create_frame_set(uint32_t frame_index)
+{
+	if (bindless_pools[frame_index]) pending_destructions.push(PendingDestruction(bindless_pools[frame_index], global_frame_counter));
+	for (const ResourceHandle& table : {buffer_generation_tables[frame_index], address_tables[frame_index], image_generation_tables[frame_index]})
+	{
+		if (table.valid()) destroy(table);
+	}
+
+	std::array<vk::DescriptorPoolSize, 2> pool_sizes{vk::DescriptorPoolSize{vk::DescriptorType::eCombinedImageSampler, image_capacity}, vk::DescriptorPoolSize{vk::DescriptorType::eStorageBuffer, 3}};
 	vk::DescriptorPoolCreateInfo dpci;
 	dpci.poolSizeCount = pool_sizes.size();
 	dpci.pPoolSizes = pool_sizes.data();
-	dpci.maxSets = frames_in_flight;
+	dpci.maxSets = 1;
 	dpci.flags = vk::DescriptorPoolCreateFlagBits::eUpdateAfterBind;
-	bindless_pool = vmc.logical_device.get().createDescriptorPool(dpci);
-
-	const uint32_t variable_count = bindless_image_capacity;
-	std::vector<uint32_t> variable_counts(frames_in_flight, variable_count);
+	bindless_pools[frame_index] = vmc.logical_device.get().createDescriptorPool(dpci);
 	vk::DescriptorSetVariableDescriptorCountAllocateInfo dsvdcai;
-	dsvdcai.descriptorSetCount = frames_in_flight;
-	dsvdcai.pDescriptorCounts = variable_counts.data();
-
-	std::vector<vk::DescriptorSetLayout> set_layouts(frames_in_flight, bindless_set_layout);
+	dsvdcai.descriptorSetCount = 1;
+	dsvdcai.pDescriptorCounts = &image_capacity;
 	vk::DescriptorSetAllocateInfo dsai;
-	dsai.descriptorPool = bindless_pool;
-	dsai.descriptorSetCount = frames_in_flight;
-	dsai.pSetLayouts = set_layouts.data();
+	dsai.descriptorPool = bindless_pools[frame_index];
+	dsai.descriptorSetCount = 1;
+	dsai.pSetLayouts = &bindless_set_layout;
 	dsai.pNext = &dsvdcai;
-	const std::vector<vk::DescriptorSet> allocated_sets = vmc.logical_device.get().allocateDescriptorSets(dsai);
+	bindless_sets[frame_index] = vmc.logical_device.get().allocateDescriptorSets(dsai)[0];
 
-	for (uint32_t i = 0; i < frames_in_flight; i++)
+	// the buffer tables with all entries, the images' entries written with their descriptors below
+	std::vector<uint32_t> buffer_generations(buffer_capacity, HandleBase::invalid_id);
+	std::vector<uint64_t> addresses(buffer_capacity, 0);
+	for (uint32_t index = 0; index < buffers_of_bindless.size(); index++)
 	{
-		bindless_sets[i] = allocated_sets[i];
-
-		Buffer::Settings buffer_generation_table_settings;
-		buffer_generation_table_settings.byte_size = uint64_t(max_bindless_buffers) * sizeof(uint32_t);
-		buffer_generation_table_settings.usage_flags = vk::BufferUsageFlagBits::eStorageBuffer;
-		buffer_generation_table_settings.location = MemoryLocation::BARFallbackHostVisible;
-		buffer_generation_table_settings.queues = QueueFamilyFlags::Graphics | QueueFamilyFlags::Compute | QueueFamilyFlags::Transfer;
-		buffer_generation_tables[i] = storage.add_buffer(std::format("bindless buffer generation table {} (vkte internal)", i), buffer_generation_table_settings);
-		storage.get_buffer(buffer_generation_tables[i]).fill_bytes(0xFF, buffer_generation_table_settings.byte_size);
-
-		Buffer::Settings address_table_settings;
-		address_table_settings.byte_size = uint64_t(max_bindless_buffers) * sizeof(uint64_t);
-		address_table_settings.usage_flags = vk::BufferUsageFlagBits::eStorageBuffer;
-		address_table_settings.location = MemoryLocation::BARFallbackHostVisible;
-		address_table_settings.queues = QueueFamilyFlags::Graphics | QueueFamilyFlags::Compute | QueueFamilyFlags::Transfer;
-		address_tables[i] = storage.add_buffer(std::format("bindless address table {} (vkte internal)", i), address_table_settings);
-		storage.get_buffer(address_tables[i]).fill_bytes(0, address_table_settings.byte_size);
-
-		Buffer::Settings image_generation_table_settings;
-		image_generation_table_settings.byte_size = uint64_t(bindless_image_capacity) * sizeof(uint32_t);
-		image_generation_table_settings.usage_flags = vk::BufferUsageFlagBits::eStorageBuffer;
-		image_generation_table_settings.location = MemoryLocation::BARFallbackHostVisible;
-		image_generation_table_settings.queues = QueueFamilyFlags::Graphics | QueueFamilyFlags::Compute | QueueFamilyFlags::Transfer;
-		image_generation_tables[i] = storage.add_buffer(std::format("bindless image generation table {} (vkte internal)", i), image_generation_table_settings);
-		storage.get_buffer(image_generation_tables[i]).fill_bytes(0xFF, image_generation_table_settings.byte_size);
-
-		vk::DescriptorBufferInfo address_table_dbi(storage.get_buffer(address_tables[i]).get(), 0, VK_WHOLE_SIZE);
-		vk::DescriptorBufferInfo image_generation_dbi(storage.get_buffer(image_generation_tables[i]).get(), 0, VK_WHOLE_SIZE);
-		vk::DescriptorBufferInfo buffer_generation_dbi(storage.get_buffer(buffer_generation_tables[i]).get(), 0, VK_WHOLE_SIZE);
-		std::array<vk::WriteDescriptorSet, 3> writes;
-		writes[0].dstSet = bindless_sets[i];
-		writes[0].dstBinding = 0;
-		writes[0].dstArrayElement = 0;
-		writes[0].descriptorType = vk::DescriptorType::eStorageBuffer;
-		writes[0].descriptorCount = 1;
-		writes[0].pBufferInfo = &buffer_generation_dbi;
-		writes[1].dstSet = bindless_sets[i];
-		writes[1].dstBinding = 1;
-		writes[1].dstArrayElement = 0;
-		writes[1].descriptorType = vk::DescriptorType::eStorageBuffer;
-		writes[1].descriptorCount = 1;
-		writes[1].pBufferInfo = &address_table_dbi;
-		writes[2].dstSet = bindless_sets[i];
-		writes[2].dstBinding = 2;
-		writes[2].dstArrayElement = 0;
-		writes[2].descriptorType = vk::DescriptorType::eStorageBuffer;
-		writes[2].descriptorCount = 1;
-		writes[2].pBufferInfo = &image_generation_dbi;
-		vmc.logical_device.get().updateDescriptorSets(writes, {});
+		if (!buffers_of_bindless[index].resource.valid()) continue;
+		buffer_generations[index] = buffers_of_bindless[index].generation;
+		addresses[index] = resolve_buffer_address(buffers_of_bindless[index].resource);
 	}
+	const std::vector<uint32_t> image_generations(image_capacity, HandleBase::invalid_id);
+	buffer_generation_tables[frame_index] = add_table(storage, std::format("bindless buffer generation table {} (vkte internal)", frame_index), std::as_bytes(std::span(buffer_generations)));
+	address_tables[frame_index] = add_table(storage, std::format("bindless address table {} (vkte internal)", frame_index), std::as_bytes(std::span(addresses)));
+	image_generation_tables[frame_index] = add_table(storage, std::format("bindless image generation table {} (vkte internal)", frame_index), std::as_bytes(std::span(image_generations)));
+	pending_buffer_writes[frame_index].clear();
+	pending_image_writes[frame_index].clear();
+	for (uint32_t index = 0; index < images_of_bindless.size(); index++) pending_image_writes[frame_index].push_back(index);
+	frame_buffer_capacities[frame_index] = buffer_capacity;
+	frame_image_capacities[frame_index] = image_capacity;
+
+	// in the order of their bindings
+	const std::array<vk::DescriptorBufferInfo, 3> infos{
+		vk::DescriptorBufferInfo(storage.get_buffer(buffer_generation_tables[frame_index]).get(), 0, VK_WHOLE_SIZE),
+		vk::DescriptorBufferInfo(storage.get_buffer(address_tables[frame_index]).get(), 0, VK_WHOLE_SIZE),
+		vk::DescriptorBufferInfo(storage.get_buffer(image_generation_tables[frame_index]).get(), 0, VK_WHOLE_SIZE)};
+	std::array<vk::WriteDescriptorSet, 3> writes;
+	for (uint32_t binding = 0; binding < writes.size(); binding++)
+	{
+		writes[binding].dstSet = bindless_sets[frame_index];
+		writes[binding].dstBinding = binding;
+		writes[binding].dstArrayElement = 0;
+		writes[binding].descriptorType = vk::DescriptorType::eStorageBuffer;
+		writes[binding].descriptorCount = 1;
+		writes[binding].pBufferInfo = &infos[binding];
+	}
+	vmc.logical_device.get().updateDescriptorSets(writes, {});
 }
 
 void MemoryManager::destruct()
@@ -143,7 +146,7 @@ void MemoryManager::destruct()
 	for (const ResourceHandle& address_table : address_tables) storage.destroy(address_table);
 	for (const ResourceHandle& image_generation_table : image_generation_tables) storage.destroy(image_generation_table);
 	for (const ResourceHandle& buffer_generation_table : buffer_generation_tables) storage.destroy(buffer_generation_table);
-	vmc.logical_device.get().destroyDescriptorPool(bindless_pool);
+	for (const vk::DescriptorPool& pool : bindless_pools) vmc.logical_device.get().destroyDescriptorPool(pool);
 	vmc.logical_device.get().destroyDescriptorSetLayout(bindless_set_layout);
 }
 
@@ -165,6 +168,7 @@ void MemoryManager::flush_pending_destructions(bool force)
 		}
 		if (pd.handle.valid()) storage.destroy(pd.handle);
 		if (pd.acceleration_structure) vmc.logical_device.get().destroyAccelerationStructureKHR(pd.acceleration_structure);
+		if (pd.descriptor_pool) vmc.logical_device.get().destroyDescriptorPool(pd.descriptor_pool);
 	}
 }
 
@@ -272,7 +276,12 @@ BufferHandle MemoryManager::register_buffer(const ResourceHandle& buffer_handle,
 	}
 	else
 	{
-		VKTE_ASSERT(buffers_of_bindless.size() < max_bindless_buffers, "vkte: Bindless buffer table exhausted its capacity!");
+		VKTE_ASSERT(buffers_of_bindless.size() < max_buffer_capacity, std::format("vkte: The device allows at most {} bindless buffers", max_buffer_capacity));
+		if (buffers_of_bindless.size() == buffer_capacity)
+		{
+			buffer_capacity = std::min(buffer_capacity * 2, max_buffer_capacity);
+			VKTE_DEBUG("vkte: Growing the bindless buffer tables to {} slots", buffer_capacity);
+		}
 		buffers_of_bindless.emplace_back();
 		index = uint32_t(buffers_of_bindless.size() - 1);
 	}
@@ -296,7 +305,12 @@ ImageHandle MemoryManager::register_image(const ResourceHandle& image_handle, co
 	}
 	else
 	{
-		VKTE_ASSERT(images_of_bindless.size() < max_bindless_images, "vkte: Bindless image table exhausted its capacity!");
+		VKTE_ASSERT(images_of_bindless.size() < max_image_capacity, std::format("vkte: The device allows at most {} bindless images", max_image_capacity));
+		if (images_of_bindless.size() == image_capacity)
+		{
+			image_capacity = std::min(image_capacity * 2, max_image_capacity);
+			VKTE_DEBUG("vkte: Growing the bindless image set to {} slots", image_capacity);
+		}
 		images_of_bindless.emplace_back();
 		index = uint32_t(images_of_bindless.size() - 1);
 	}
@@ -341,6 +355,7 @@ void MemoryManager::begin_frame()
 
 void MemoryManager::write_descriptors(uint32_t frame_index)
 {
+	if (frame_buffer_capacities[frame_index] != buffer_capacity || frame_image_capacities[frame_index] != image_capacity) create_frame_set(frame_index);
 	std::vector<uint32_t>& dirty_buffers = pending_buffer_writes[frame_index];
 	if (!dirty_buffers.empty())
 	{

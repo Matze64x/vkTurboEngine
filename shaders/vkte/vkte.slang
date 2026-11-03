@@ -13,13 +13,14 @@ namespace vkte
 	{
 		uint id = kInvalidHandleId;
 		uint generation = kInvalidHandleId;
-		public bool valid() { return id != kInvalidHandleId && gStorageBufferGeneration[id] == generation; }
+		// ids beyond the table have no entry yet, such as one added after the frame's entries were written
+		public bool valid() { uint count, stride; gStorageBufferGeneration.GetDimensions(count, stride); return id < count && gStorageBufferGeneration[id] == generation; }
 	}
 	public struct ImageHandle
 	{
 		uint id = kInvalidHandleId;
 		uint generation = kInvalidHandleId;
-		public bool valid() { return id != kInvalidHandleId && gStorageImageGeneration[id] == generation; }
+		public bool valid() { uint count, stride; gStorageImageGeneration.GetDimensions(count, stride); return id < count && gStorageImageGeneration[id] == generation; }
 	}
 
 	public struct Buffer<T>
