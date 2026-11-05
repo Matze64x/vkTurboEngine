@@ -32,6 +32,8 @@ namespace vkte
 			get { return buffer_pointer.getPtr()[index]; }
 			set { buffer_pointer.getPtr()[index] = newValue; }
 		}
+		// for what the subscript's copies can't do, such as atomics on Atomic<T> elements
+		public T* get_pointer() { return buffer_pointer.getPtr(); }
 	}
 
 	public Sampler2D get_texture(ImageHandle handle)
