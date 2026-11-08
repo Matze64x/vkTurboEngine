@@ -40,6 +40,8 @@ public:
 	// rebuilds a dynamic BLAS from its buffers
 	void update_blas(BLASHandle blas);
 	void remove_blas(BLASHandle blas);
+	// of the acceleration structure itself, without its geometry's buffers
+	vk::DeviceSize get_blas_byte_size(BLASHandle blas) const;
 	InstanceHandle add_instance(BLASHandle blas, const vk::TransformMatrixKHR& M, uint32_t custom_index, uint8_t mask = 0xFF, vk::GeometryInstanceFlagsKHR flags = vk::GeometryInstanceFlagBitsKHR::eTriangleFacingCullDisable);
 	void update_instance(InstanceHandle instance, const vk::TransformMatrixKHR& M);
 	void set_instance_blas(InstanceHandle instance, BLASHandle blas);

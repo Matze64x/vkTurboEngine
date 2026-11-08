@@ -173,6 +173,11 @@ uint32_t AccelerationStructureBuilder::get_index(InstanceHandle instance) const
 	return instance.id;
 }
 
+vk::DeviceSize AccelerationStructureBuilder::get_blas_byte_size(BLASHandle blas) const
+{
+	return bottom_level_as[get_index(blas)].asci.size;
+}
+
 void AccelerationStructureBuilder::update_blas(BLASHandle handle)
 {
 	blas_update_indices.emplace(get_index(handle));
