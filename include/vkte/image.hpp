@@ -71,6 +71,9 @@ public:
 		bool image_view_required = true;
 		uint32_t layer_count = 1;
 		std::vector<std::span<const std::byte>> initial_data{};
+		// without initial_data, the layout the image starts in, transitioned on the host (which its format must support), so
+		// that its descriptors can be written before anything is recorded for it
+		vk::ImageLayout initial_layout = vk::ImageLayout::eUndefined;
 		MemoryLocation location = MemoryLocation::DeviceLocal;
 	};
 
@@ -107,7 +110,7 @@ private:
 	vk::Sampler sampler;
 
 	std::pair<vk::Image, VmaAllocation> create_image(Queues queues, vk::ImageUsageFlags usage, vk::SampleCountFlagBits sample_count, bool use_mip_levels, vk::Format format, vk::Extent3D extent, uint32_t layer_count, vk::ImageCreateFlags flags = {}, MemoryLocation location = MemoryLocation::DeviceLocal);
-	void create_image_from_data(const std::byte* data, Command& command, Queues queues, uint32_t base_mip_map_lvl, vk::ImageUsageFlags usage_flags, vk::ImageViewType image_view_type, MemoryLocation location);
+	void create_image_from_data(const std::vector<std::span<const std::byte>>& data, Command& command, Queues queues, uint32_t base_mip_map_lvl, vk::ImageUsageFlags usage_flags, vk::ImageViewType image_view_type, MemoryLocation location);
 	void create_image_view(vk::ImageAspectFlags aspects, vk::ImageViewType image_view_type = vk::ImageViewType::e2D);
 	void generate_mipmaps(Command& command);
 };

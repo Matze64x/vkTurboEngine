@@ -1,7 +1,6 @@
 #include "vkte/image.hpp"
 
 #include <cmath>
-#include <cstring>
 #include <format>
 #include <vulkan/vulkan_format_traits.hpp>
 #include "vkte/command.hpp"
@@ -118,8 +117,11 @@ Image::Image(const VulkanMainContext& vmc, Command& command, const Settings& set
 
 	if (settings.initial_data.empty())
 	{
-		std::tie(image, vmaa) = create_image(settings.queues, settings.usage_flags, settings.sample_count, settings.use_mip_maps, format, vk::Extent3D(w, h, d), layer_count, get_image_create_flags(settings.image_view_type), settings.location);
-		layout = vk::ImageLayout::eUndefined;
+		const bool has_initial_layout = settings.initial_layout != vk::ImageLayout::eUndefined;
+		const vk::ImageUsageFlags usage_flags = has_initial_layout ? settings.usage_flags | vk::ImageUsageFlagBits::eHostTransfer : settings.usage_flags;
+		std::tie(image, vmaa) = create_image(settings.queues, usage_flags, settings.sample_count, settings.use_mip_maps, format, vk::Extent3D(w, h, d), layer_count, get_image_create_flags(settings.image_view_type), settings.location);
+		layout = settings.initial_layout;
+		if (has_initial_layout) vmc.logical_device.get().transitionImageLayout(vk::HostImageLayoutTransitionInfo(image, vk::ImageLayout::eUndefined, layout, vk::ImageSubresourceRange(default_aspect_for_format(format), 0, mip_levels, 0, layer_count)));
 		if (settings.image_view_required) create_image_view(default_aspect_for_format(format), settings.image_view_type);
 		if (settings.usage_flags & vk::ImageUsageFlagBits::eSampled) create_sampler(sampler_settings);
 	}
@@ -133,14 +135,7 @@ Image::Image(const VulkanMainContext& vmc, Command& command, const Settings& set
 			VKTE_ASSERT(entry_data.size() == expected_entry_byte_size, std::format("vkte: Image::Settings::initial_data entry has {} bytes, expected width * height * {} = {}", entry_data.size(), vk::blockSize(format), expected_entry_byte_size));
 		}
 
-		std::vector<std::byte> concatenated_data(byte_size);
-		std::size_t offset = 0;
-		for (const std::span<const std::byte>& entry_data : settings.initial_data)
-		{
-			std::memcpy(concatenated_data.data() + offset, entry_data.data(), entry_data.size());
-			offset += entry_data.size();
-		}
-		create_image_from_data(concatenated_data.data(), command, settings.queues, settings.base_mip_map_lvl, settings.usage_flags, settings.image_view_type, settings.location);
+		create_image_from_data(settings.initial_data, command, settings.queues, settings.base_mip_map_lvl, settings.usage_flags, settings.image_view_type, settings.location);
 	}
 }
 
@@ -219,7 +214,7 @@ std::pair<vk::Image, VmaAllocation> Image::create_image(Queues queues, vk::Image
 	return *fallback_result;
 }
 
-void Image::create_image_from_data(const std::byte* data, Command& command, Queues queues, uint32_t base_mip_map_lvl, vk::ImageUsageFlags usage_flags, vk::ImageViewType image_view_type, MemoryLocation location)
+void Image::create_image_from_data(const std::vector<std::span<const std::byte>>& data, Command& command, Queues queues, uint32_t base_mip_map_lvl, vk::ImageUsageFlags usage_flags, vk::ImageViewType image_view_type, MemoryLocation location)
 {
 	vk::FormatProperties format_properties = vmc.physical_device.get().getFormatProperties(format);
 	if (!(format_properties.optimalTilingFeatures & vk::FormatFeatureFlagBits::eSampledImageFilterLinear))
@@ -232,8 +227,14 @@ void Image::create_image_from_data(const std::byte* data, Command& command, Queu
 		const vk::ImageSubresourceRange range(vk::ImageAspectFlagBits::eColor, 0, mip_levels, 0, layer_count);
 		vmc.logical_device.get().transitionImageLayout(vk::HostImageLayoutTransitionInfo(image, vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral, range));
 
-		const vk::MemoryToImageCopy region(data, 0, 0, vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, 0, layer_count), vk::Offset3D(0, 0, 0), vk::Extent3D(w, h, d));
-		vmc.logical_device.get().copyMemoryToImage(vk::CopyMemoryToImageInfo({}, image, vk::ImageLayout::eGeneral, region));
+		// an entry per Z-slice of a 3D image, else per layer
+		std::vector<vk::MemoryToImageCopy> regions;
+		for (uint32_t i = 0; i < data.size(); i++)
+		{
+			const uint32_t layer = d > 1 ? 0 : i;
+			regions.emplace_back(data[i].data(), 0, 0, vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, layer, 1), vk::Offset3D(0, 0, d > 1 ? int32_t(i) : 0), vk::Extent3D(w, h, 1));
+		}
+		vmc.logical_device.get().copyMemoryToImage(vk::CopyMemoryToImageInfo({}, image, vk::ImageLayout::eGeneral, regions));
 
 		command.run_one_time_transfer([&](vk::CommandBuffer& cb) {
 			perform_image_layout_transition(cb, {
