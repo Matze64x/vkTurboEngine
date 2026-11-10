@@ -1,5 +1,6 @@
 #include "vkte/image.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <format>
 #include <vulkan/vulkan_format_traits.hpp>
@@ -342,7 +343,7 @@ void Image::create_image_view(vk::ImageAspectFlags aspects, vk::ImageViewType im
 	view = vmc.logical_device.get().createImageView(ivci);
 }
 
-void Image::create_sampler(const SamplerSettings& sampler_settings, bool enable_anisotropy)
+void Image::create_sampler(const SamplerSettings& sampler_settings)
 {
 	const vk::FormatFeatureFlags format_features = vmc.physical_device.get().getFormatProperties(format).optimalTilingFeatures;
 	VKTE_ASSERT(sampler_settings.filter != vk::Filter::eLinear || (format_features & vk::FormatFeatureFlagBits::eSampledImageFilterLinear), std::format("vkte: This device can't filter {} images linearly; their SamplerSettings::filter must be eNearest", vk::to_string(format)));
@@ -352,16 +353,8 @@ void Image::create_sampler(const SamplerSettings& sampler_settings, bool enable_
 	sci.addressModeU = sampler_settings.address_mode_u;
 	sci.addressModeV = sampler_settings.address_mode_v;
 	sci.addressModeW = sampler_settings.address_mode_u;
-	if (enable_anisotropy)
-	{
-		sci.anisotropyEnable = VK_TRUE;
-		sci.maxAnisotropy = std::min(8.0f, vmc.physical_device.get().getProperties().limits.maxSamplerAnisotropy);
-	}
-	else
-	{
-		sci.anisotropyEnable = VK_FALSE;
-		sci.maxAnisotropy = 1.0f;
-	}
+	sci.maxAnisotropy = std::clamp(sampler_settings.max_anisotropy, 1.0f, vmc.physical_device.get().getProperties().limits.maxSamplerAnisotropy);
+	sci.anisotropyEnable = sci.maxAnisotropy > 1.0f ? VK_TRUE : VK_FALSE;
 	sci.borderColor = vk::BorderColor::eIntOpaqueBlack;
 	sci.unnormalizedCoordinates = VK_FALSE;
 	sci.compareEnable = VK_FALSE;
