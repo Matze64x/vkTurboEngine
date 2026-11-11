@@ -25,6 +25,7 @@ public:
 	// like bindless resources, once no frame in flight can use them anymore
 	void destroy(const ResourceHandle& storage_resource);
 	void destroy(vk::AccelerationStructureKHR acceleration_structure);
+	void destroy(vk::QueryPool query_pool);
 	Buffer& get_buffer(const BufferHandle& handle);
 	Image& get_image(const ImageHandle& handle);
 	BufferHandle get_bindless_buffer(const std::string& unique_name);
@@ -67,12 +68,15 @@ private:
 		{}
 		PendingDestruction(vk::DescriptorPool descriptor_pool, uint64_t requested_at_frame) : requested_at_frame(requested_at_frame), descriptor_pool(descriptor_pool)
 		{}
+		PendingDestruction(vk::QueryPool query_pool, uint64_t requested_at_frame) : requested_at_frame(requested_at_frame), query_pool(query_pool)
+		{}
 		ResourceHandle handle;
 		uint64_t requested_at_frame;
 		BufferHandle bindless_buffer;
 		ImageHandle bindless_image;
 		vk::AccelerationStructureKHR acceleration_structure;
 		vk::DescriptorPool descriptor_pool;
+		vk::QueryPool query_pool;
 	};
 	uint64_t global_frame_counter = 0;
 	std::queue<PendingDestruction> pending_destructions;

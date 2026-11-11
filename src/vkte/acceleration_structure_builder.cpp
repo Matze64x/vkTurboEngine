@@ -1,6 +1,7 @@
 #include "vkte/acceleration_structure_builder.hpp"
 
 #include <span>
+#include <utility>
 #include "vkte/vkte_log.hpp"
 
 namespace vkte
@@ -42,12 +43,19 @@ void AccelerationStructureBuilder::destruct()
 		if (blas.buffer.valid()) memory_manager.destroy(blas.buffer);
 		if (blas.scratch_buffer.valid()) memory_manager.destroy(blas.scratch_buffer);
 	}
+	for (CompactionQueries& queries : compaction_queries)
+	{
+		if (queries.pool) memory_manager.destroy(queries.pool);
+		queries = CompactionQueries();
+	}
+	compacted_blases.clear();
 	bottom_level_as.clear();
 	blas_generations.clear();
 	instance_generations.clear();
 	free_blas_indices.clear();
 	blas_update_indices.clear();
 	instances.clear();
+	instance_blases.clear();
 	free_instance_indices.clear();
 	tlas_outdated = false;
 }
@@ -62,6 +70,8 @@ BLASHandle AccelerationStructureBuilder::add_blas(const std::string& buffer_name
 
 	BLAS blas;
 	blas.dynamic = blas_data.dynamic;
+	// a dynamic one is rebuilt in place
+	blas.is_compactable = !blas_data.dynamic;
 	for (uint32_t i = 0; i < blas_data.index_offsets.size(); ++i)
 	{
 		vk::AccelerationStructureBuildRangeInfoKHR asbri;
@@ -92,6 +102,7 @@ BLASHandle AccelerationStructureBuilder::add_aabb_blas(const std::string& buffer
 {
 	Buffer& aabb_buffer = memory_manager.get_buffer(blas_data.aabb_buffer_id);
 
+	// a box gains nothing from compaction
 	BLAS blas;
 	blas.dynamic = blas_data.dynamic;
 
@@ -126,8 +137,10 @@ BLASHandle AccelerationStructureBuilder::create_blas(const std::string& buffer_n
 	}
 	BLAS& blas = bottom_level_as[blas_idx];
 	blas = std::move(new_blas);
+	blas.name = buffer_name;
 	blas.asbgi.type = vk::AccelerationStructureTypeKHR::eBottomLevel;
 	blas.asbgi.flags = vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace;
+	if (blas.is_compactable) blas.asbgi.flags |= vk::BuildAccelerationStructureFlagBitsKHR::eAllowCompaction;
 	blas.asbgi.mode = vk::BuildAccelerationStructureModeKHR::eBuild;
 	blas.asbgi.geometryCount = blas.asgs.size();
 	blas.asbgi.pGeometries = blas.asgs.data();
@@ -167,6 +180,11 @@ uint32_t AccelerationStructureBuilder::get_index(BLASHandle blas) const
 	return blas.id;
 }
 
+bool AccelerationStructureBuilder::is_current(BLASHandle blas) const
+{
+	return blas.valid() && blas.id < bottom_level_as.size() && blas.generation == blas_generations[blas.id];
+}
+
 uint32_t AccelerationStructureBuilder::get_index(InstanceHandle instance) const
 {
 	VKTE_ASSERT(instance.valid() && instance.id < instances.size() && instance.generation == instance_generations[instance.id], "vkte: Invalid instance handle!");
@@ -178,8 +196,22 @@ vk::DeviceSize AccelerationStructureBuilder::get_blas_byte_size(BLASHandle blas)
 	return bottom_level_as[get_index(blas)].asci.size;
 }
 
+std::vector<BLASHandle> AccelerationStructureBuilder::take_compacted_blases()
+{
+	std::vector<BLASHandle> current;
+	for (BLASHandle blas : compacted_blases)
+	{
+		// removed meanwhile
+		if (is_current(blas)) current.push_back(blas);
+	}
+	compacted_blases.clear();
+	return current;
+}
+
 void AccelerationStructureBuilder::update_blas(BLASHandle handle)
 {
+	// a static one only has its scratch buffer for its first build
+	VKTE_ASSERT(bottom_level_as[get_index(handle)].dynamic || bottom_level_as[get_index(handle)].scratch_buffer.valid(), "vkte: Only dynamic BLASes can be rebuilt!");
 	blas_update_indices.emplace(get_index(handle));
 	tlas_outdated = true;
 }
@@ -209,12 +241,14 @@ InstanceHandle AccelerationStructureBuilder::add_instance(BLASHandle blas, const
 	if (free_instance_indices.empty())
 	{
 		instances.push_back(instance);
+		instance_blases.push_back(get_index(blas));
 		instance_generations.push_back(0);
 		return InstanceHandle{{uint32_t(instances.size() - 1), 0}};
 	}
 	const uint32_t instance_idx = free_instance_indices.back();
 	free_instance_indices.pop_back();
 	instances[instance_idx] = instance;
+	instance_blases[instance_idx] = get_index(blas);
 	return InstanceHandle{{instance_idx, instance_generations[instance_idx]}};
 }
 
@@ -227,6 +261,7 @@ void AccelerationStructureBuilder::update_instance(InstanceHandle instance, cons
 void AccelerationStructureBuilder::set_instance_blas(InstanceHandle instance, BLASHandle blas)
 {
 	instances[get_index(instance)].accelerationStructureReference = bottom_level_as[get_index(blas)].device_address;
+	instance_blases[get_index(instance)] = get_index(blas);
 	tlas_outdated = true;
 }
 
@@ -235,6 +270,7 @@ void AccelerationStructureBuilder::remove_instance(InstanceHandle instance)
 	const uint32_t instance_idx = get_index(instance);
 	// an instance without a BLAS is inactive
 	instances[instance_idx] = vk::AccelerationStructureInstanceKHR();
+	instance_blases[instance_idx] = INVALID_BLAS_INDEX;
 	instance_generations[instance_idx]++;
 	free_instance_indices.push_back(instance_idx);
 	tlas_outdated = true;
@@ -242,20 +278,25 @@ void AccelerationStructureBuilder::remove_instance(InstanceHandle instance)
 
 bool AccelerationStructureBuilder::has_frame_work() const
 {
-	return !blas_update_indices.empty() || tlas_outdated;
+	bool has_queries = false;
+	for (const CompactionQueries& queries : compaction_queries) has_queries |= !queries.blases.empty();
+	return !blas_update_indices.empty() || tlas_outdated || has_queries;
 }
 
 void AccelerationStructureBuilder::begin_frame(vk::CommandBuffer& cb, uint32_t frame_index)
 {
+	compact_queried_blases(cb, frame_index);
 	if (!blas_update_indices.empty())
 	{
 		std::vector<vk::AccelerationStructureBuildGeometryInfoKHR> asbgis;
 		std::vector<vk::AccelerationStructureBuildRangeInfoKHR*> pasbris;
+		std::vector<BLASHandle> compactable_blases;
 		for (uint32_t blas_idx : blas_update_indices)
 		{
 			BLAS& blas = bottom_level_as[blas_idx];
 			asbgis.push_back(blas.asbgi);
 			pasbris.push_back(blas.asbris.data());
+			if (blas.is_compactable) compactable_blases.push_back(BLASHandle{{blas_idx, blas_generations[blas_idx]}});
 			// only dynamic BLASes are built again
 			if (blas.dynamic) continue;
 			memory_manager.destroy(blas.scratch_buffer);
@@ -265,7 +306,9 @@ void AccelerationStructureBuilder::begin_frame(vk::CommandBuffer& cb, uint32_t f
 		blas_update_indices.clear();
 		const vk::MemoryBarrier2 barrier(vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR, vk::AccessFlagBits2::eAccelerationStructureWriteKHR, vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR, vk::AccessFlagBits2::eAccelerationStructureReadKHR);
 		cb.pipelineBarrier2(vk::DependencyInfo({}, barrier, {}, {}));
+		if (!compactable_blases.empty()) query_compacted_sizes(cb, frame_index, compactable_blases);
 	}
+	if (!tlas_outdated) return;
 	// its size depends on the instance count
 	if (!tlas.handle || tlas.primitive_count != instances.size())
 	{
@@ -275,6 +318,72 @@ void AccelerationStructureBuilder::begin_frame(vk::CommandBuffer& cb, uint32_t f
 	tlas.asg.geometry.instances.data.deviceAddress = write_instances(frame_index);
 	cb.buildAccelerationStructuresKHR({tlas.asbgi}, {&tlas.asbri});
 	tlas_outdated = false;
+}
+
+void AccelerationStructureBuilder::query_compacted_sizes(vk::CommandBuffer& cb, uint32_t frame_index, const std::vector<BLASHandle>& blases)
+{
+	CompactionQueries& queries = compaction_queries[frame_index];
+	// this frame's earlier queries are done, since the frame's previous use is over
+	if (queries.capacity < blases.size())
+	{
+		if (queries.pool) memory_manager.destroy(queries.pool);
+		queries.capacity = uint32_t(blases.size());
+		queries.pool = vmc.logical_device.get().createQueryPool(vk::QueryPoolCreateInfo({}, vk::QueryType::eAccelerationStructureCompactedSizeKHR, queries.capacity));
+	}
+	std::vector<vk::AccelerationStructureKHR> handles;
+	for (BLASHandle blas : blases) handles.push_back(bottom_level_as[blas.id].handle);
+	cb.resetQueryPool(queries.pool, 0, uint32_t(blases.size()));
+	cb.writeAccelerationStructuresPropertiesKHR(handles, vk::QueryType::eAccelerationStructureCompactedSizeKHR, queries.pool, 0);
+	queries.blases = blases;
+}
+
+void AccelerationStructureBuilder::compact_queried_blases(vk::CommandBuffer& cb, uint32_t frame_index)
+{
+	CompactionQueries& queries = compaction_queries[frame_index];
+	if (queries.blases.empty()) return;
+	// written frames_in_flight frames ago by this frame's previous use, which is over
+	std::vector<uint64_t> sizes(queries.blases.size());
+	VKTE_CHECK(vmc.logical_device.get().getQueryPoolResults(queries.pool, 0, uint32_t(sizes.size()), sizes.size() * sizeof(uint64_t), sizes.data(), sizeof(uint64_t), vk::QueryResultFlagBits::e64 | vk::QueryResultFlagBits::eWait), "vkte: Failed to read compacted BLAS sizes!");
+	bool has_compacted = false;
+	for (uint32_t i = 0; i < queries.blases.size(); i++)
+	{
+		// removed meanwhile
+		if (!is_current(queries.blases[i])) continue;
+		BLAS& blas = bottom_level_as[queries.blases[i].id];
+		Buffer::Settings buffer_settings;
+		buffer_settings.byte_size = sizes[i];
+		buffer_settings.usage_flags = vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR;
+		buffer_settings.location = MemoryLocation::DeviceLocal;
+		buffer_settings.queues = QueueFamilyFlags::Compute | QueueFamilyFlags::Graphics | QueueFamilyFlags::Transfer;
+		const ResourceHandle buffer = memory_manager.get_storage().add_buffer(blas.name + " compacted", buffer_settings);
+		vk::AccelerationStructureCreateInfoKHR asci;
+		asci.buffer = memory_manager.get_storage().get_buffer(buffer).get();
+		asci.size = sizes[i];
+		asci.type = vk::AccelerationStructureTypeKHR::eBottomLevel;
+		const vk::AccelerationStructureKHR handle = vmc.logical_device.get().createAccelerationStructureKHR(asci);
+		cb.copyAccelerationStructureKHR(vk::CopyAccelerationStructureInfoKHR(blas.handle, handle, vk::CopyAccelerationStructureModeKHR::eCompact));
+		// frames in flight may still trace the old one
+		memory_manager.destroy(blas.handle);
+		memory_manager.destroy(blas.buffer);
+		blas.handle = handle;
+		blas.buffer = buffer;
+		blas.asci = asci;
+		vk::AccelerationStructureDeviceAddressInfoKHR asdai;
+		asdai.accelerationStructure = handle;
+		blas.device_address = vmc.logical_device.get().getAccelerationStructureAddressKHR(&asdai);
+		compacted_blases.push_back(queries.blases[i]);
+		has_compacted = true;
+	}
+	queries.blases.clear();
+	if (!has_compacted) return;
+	for (uint32_t i = 0; i < instances.size(); i++)
+	{
+		if (instance_blases[i] != INVALID_BLAS_INDEX) instances[i].accelerationStructureReference = bottom_level_as[instance_blases[i]].device_address;
+	}
+	tlas_outdated = true;
+	// the copies are done before the TLAS build reads the BLASes
+	const vk::MemoryBarrier2 barrier(vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR, vk::AccessFlagBits2::eAccelerationStructureWriteKHR, vk::PipelineStageFlagBits2::eAccelerationStructureBuildKHR, vk::AccessFlagBits2::eAccelerationStructureReadKHR);
+	cb.pipelineBarrier2(vk::DependencyInfo({}, barrier, {}, {}));
 }
 
 vk::DeviceAddress AccelerationStructureBuilder::write_instances(uint32_t frame_index)

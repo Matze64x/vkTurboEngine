@@ -169,6 +169,7 @@ void MemoryManager::flush_pending_destructions(bool force)
 		if (pd.handle.valid()) storage.destroy(pd.handle);
 		if (pd.acceleration_structure) vmc.logical_device.get().destroyAccelerationStructureKHR(pd.acceleration_structure);
 		if (pd.descriptor_pool) vmc.logical_device.get().destroyDescriptorPool(pd.descriptor_pool);
+		if (pd.query_pool) vmc.logical_device.get().destroyQueryPool(pd.query_pool);
 	}
 }
 
@@ -237,6 +238,11 @@ void MemoryManager::destroy(const ResourceHandle& storage_resource)
 void MemoryManager::destroy(vk::AccelerationStructureKHR acceleration_structure)
 {
 	pending_destructions.push(PendingDestruction(acceleration_structure, global_frame_counter));
+}
+
+void MemoryManager::destroy(vk::QueryPool query_pool)
+{
+	pending_destructions.push(PendingDestruction(query_pool, global_frame_counter));
 }
 
 Buffer& MemoryManager::get_buffer(const BufferHandle& handle)

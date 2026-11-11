@@ -13,6 +13,9 @@ class Engine;
 
 // Changes are built when the next frame begins, after the previous frame's work and before the
 // frame's own. Removed acceleration structures stay alive while a frame in flight can use them.
+// BLASes of triangles that aren't dynamic are compacted frames_in_flight frames after their build,
+// once their compacted size is known: they move to a smaller acceleration structure, which their
+// instances then reference.
 class AccelerationStructureBuilder
 {
 public:
@@ -42,6 +45,8 @@ public:
 	void remove_blas(BLASHandle blas);
 	// of the acceleration structure itself, without its geometry's buffers
 	vk::DeviceSize get_blas_byte_size(BLASHandle blas) const;
+	// those compacted since the last call, whose byte size is now the compacted one
+	std::vector<BLASHandle> take_compacted_blases();
 	InstanceHandle add_instance(BLASHandle blas, const vk::TransformMatrixKHR& M, uint32_t custom_index, uint8_t mask = 0xFF, vk::GeometryInstanceFlagsKHR flags = vk::GeometryInstanceFlagBitsKHR::eTriangleFacingCullDisable);
 	void update_instance(InstanceHandle instance, const vk::TransformMatrixKHR& M);
 	void set_instance_blas(InstanceHandle instance, BLASHandle blas);
@@ -60,6 +65,16 @@ private:
 		ResourceHandle buffer;
 		ResourceHandle scratch_buffer;
 		bool dynamic = false;
+		bool is_compactable = false;
+		// for the compacted one's buffer
+		std::string name;
+	};
+
+	// per frame in flight: the BLASes whose compacted size the frame's build queried, in query order
+	struct CompactionQueries {
+		vk::QueryPool pool;
+		uint32_t capacity = 0;
+		std::vector<BLASHandle> blases;
 	};
 
 	struct TLAS {
@@ -79,6 +94,8 @@ private:
 		vk::DeviceAddress device_address;
 	};
 
+	static constexpr uint32_t INVALID_BLAS_INDEX = 0xffffffffu;
+
 	friend class Engine;
 	AccelerationStructureBuilder(const VulkanMainContext& vmc, MemoryManager& memory_manager);
 	bool has_frame_work() const;
@@ -88,6 +105,9 @@ private:
 	ScratchBuffer create_scratch_buffer(const std::string& buffer_name, vk::DeviceSize build_scratch_size);
 	BLASHandle create_blas(const std::string& buffer_name, BLAS blas);
 	uint32_t get_index(BLASHandle blas) const;
+	bool is_current(BLASHandle blas) const;
+	void compact_queried_blases(vk::CommandBuffer& cb, uint32_t frame_index);
+	void query_compacted_sizes(vk::CommandBuffer& cb, uint32_t frame_index, const std::vector<BLASHandle>& blases);
 	uint32_t get_index(InstanceHandle instance) const;
 	void create_tlas();
 	void destroy_tlas();
@@ -101,10 +121,14 @@ private:
 	std::vector<uint32_t> free_blas_indices;
 	std::set<uint32_t> blas_update_indices;
 	std::vector<vk::AccelerationStructureInstanceKHR> instances;
+	// per instance, the index of its BLAS, whose address it references; INVALID_BLAS_INDEX for removed ones
+	std::vector<uint32_t> instance_blases;
 	std::vector<uint32_t> instance_generations;
 	std::vector<uint32_t> free_instance_indices;
 	// host visible, per frame in flight, since the previous frame's build may not have run yet
 	std::array<ResourceHandle, frames_in_flight> instance_buffers;
+	std::array<CompactionQueries, frames_in_flight> compaction_queries;
+	std::vector<BLASHandle> compacted_blases;
 	TLAS tlas;
 	// every frame needs a TLAS, even without instances
 	bool tlas_outdated = true;
