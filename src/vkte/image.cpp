@@ -118,11 +118,8 @@ Image::Image(const VulkanMainContext& vmc, Command& command, const Settings& set
 
 	if (settings.initial_data.empty())
 	{
-		const bool has_initial_layout = settings.initial_layout != vk::ImageLayout::eUndefined;
-		const vk::ImageUsageFlags usage_flags = has_initial_layout ? settings.usage_flags | vk::ImageUsageFlagBits::eHostTransfer : settings.usage_flags;
-		std::tie(image, vmaa) = create_image(settings.queues, usage_flags, settings.sample_count, settings.use_mip_maps, format, vk::Extent3D(w, h, d), layer_count, get_image_create_flags(settings.image_view_type), settings.location);
-		layout = settings.initial_layout;
-		if (has_initial_layout) vmc.logical_device.get().transitionImageLayout(vk::HostImageLayoutTransitionInfo(image, vk::ImageLayout::eUndefined, layout, vk::ImageSubresourceRange(default_aspect_for_format(format), 0, mip_levels, 0, layer_count)));
+		std::tie(image, vmaa) = create_image(settings.queues, settings.usage_flags, settings.sample_count, settings.use_mip_maps, format, vk::Extent3D(w, h, d), layer_count, get_image_create_flags(settings.image_view_type), settings.location);
+		layout = settings.descriptor_layout;
 		if (settings.image_view_required) create_image_view(default_aspect_for_format(format), settings.image_view_type);
 		if (settings.usage_flags & vk::ImageUsageFlagBits::eSampled) create_sampler(sampler_settings);
 	}

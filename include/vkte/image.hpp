@@ -72,9 +72,10 @@ public:
 		bool image_view_required = true;
 		uint32_t layer_count = 1;
 		std::vector<std::span<const std::byte>> initial_data{};
-		// without initial_data, the layout the image starts in, transitioned on the host (which its format must support), so
-		// that its descriptors can be written before anything is recorded for it
-		vk::ImageLayout initial_layout = vk::ImageLayout::eUndefined;
+		// without initial_data, the layout its descriptors are written with, so that they can be written before anything is
+		// recorded for it; the image starts undefined, and must be transitioned to it before a frame uses it (a transition
+		// on the host instead would need host transfer usage, which some drivers back with system memory)
+		vk::ImageLayout descriptor_layout = vk::ImageLayout::eUndefined;
 		MemoryLocation location = MemoryLocation::DeviceLocal;
 	};
 
