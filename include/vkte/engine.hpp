@@ -74,7 +74,6 @@ public:
 	Command& get_command() { return command; }
 	Storage& get_storage() { return storage; }
 	MemoryManager& get_memory_manager() { return memory_manager; }
-	ThreadManager& get_thread_manager() { return thread_manager; }
 
 	SemaphoreHandle add_semaphore();
 	void destroy(SemaphoreHandle handle);
@@ -111,7 +110,6 @@ private:
 	Command command;
 	Storage storage;
 	MemoryManager memory_manager;
-	ThreadManager thread_manager;
 	ShaderRepository shader_repository;
 	FrameSettings frame_settings;
 	std::vector<Component*> components;

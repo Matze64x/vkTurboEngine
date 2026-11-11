@@ -9,7 +9,7 @@
 
 namespace vkte
 {
-Engine::Engine(const EngineSettings& settings) : command(vmc), storage(vmc, command), memory_manager(vmc, storage), shader_repository(thread_manager)
+Engine::Engine(const EngineSettings& settings) : command(vmc), storage(vmc, command), memory_manager(vmc, storage), shader_repository(get_thread_manager())
 {
 	if (settings.enable_window)
 	{

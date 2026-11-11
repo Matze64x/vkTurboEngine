@@ -26,14 +26,25 @@ void ThreadManager::stop_and_join()
 
 void ThreadManager::force_stop()
 {
+	std::unique_ptr<Task> dropped;
 	{
 		std::lock_guard<std::mutex> lock(tasks_mutex);
-		while (queue_head)
-		{
-			queue_head = std::move(queue_head->next);
-			pending_tasks--;
-		}
+		stopping = true;
+		dropped = std::move(queue_head);
 		queue_tail = nullptr;
+	}
+	// outside the lock, since destroying a task runs its captures' destructors
+	size_t dropped_count = 0;
+	while (dropped)
+	{
+		std::unique_ptr<Task> next = std::move(dropped->next);
+		finish(std::move(dropped));
+		dropped = std::move(next);
+		dropped_count++;
+	}
+	{
+		std::lock_guard<std::mutex> lock(tasks_mutex);
+		pending_tasks -= dropped_count;
 		if (pending_tasks == 0) idle_cv.notify_all();
 	}
 	stop_and_join();
@@ -52,7 +63,8 @@ void ThreadManager::worker_loop(size_t worker_index)
 			queue_head = std::move(task->next);
 			if (!queue_head) queue_tail = nullptr;
 		}
-		task->func(worker_index);
+		task->run(worker_index);
+		finish(std::move(task));
 		{
 			std::lock_guard<std::mutex> lock(tasks_mutex);
 			if (--pending_tasks == 0) idle_cv.notify_all();
@@ -60,9 +72,46 @@ void ThreadManager::worker_loop(size_t worker_index)
 	}
 }
 
+void ThreadManager::finish(std::unique_ptr<Task> task)
+{
+	TaskGroup* group = task->group;
+	task.reset();
+	if (group) group->finish_task();
+}
+
 void ThreadManager::wait_all()
 {
 	std::unique_lock<std::mutex> lock(tasks_mutex);
 	idle_cv.wait(lock, [this] { return pending_tasks == 0; });
+}
+
+ThreadManager& get_thread_manager()
+{
+	static ThreadManager thread_manager;
+	return thread_manager;
+}
+
+TaskGroup::~TaskGroup()
+{
+	wait();
+}
+
+void TaskGroup::wait()
+{
+	std::unique_lock<std::mutex> lock(mutex);
+	idle_cv.wait(lock, [this] { return pending_tasks == 0; });
+}
+
+void TaskGroup::add_task()
+{
+	std::lock_guard<std::mutex> lock(mutex);
+	pending_tasks++;
+}
+
+void TaskGroup::finish_task()
+{
+	// notifies under the lock, since a waiting owner may destroy the group as soon as it holds the mutex
+	std::lock_guard<std::mutex> lock(mutex);
+	if (--pending_tasks == 0) idle_cv.notify_all();
 }
 } // namespace vkte
