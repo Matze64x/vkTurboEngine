@@ -1,8 +1,12 @@
 #include "vkte/thread_manager.hpp"
+#include "vkte/vkte_log.hpp"
 
 namespace vkte
 {
-ThreadManager::ThreadManager(size_t thread_count)
+// the pool whose worker this thread is, if any
+static thread_local const ThreadManager* worker_of = nullptr;
+
+ThreadManager::ThreadManager(size_t thread_count) : default_group(std::make_unique<TaskGroup>(*this))
 {
 	if (thread_count == 0) thread_count = 1;
 	workers.reserve(thread_count);
@@ -11,78 +15,84 @@ ThreadManager::ThreadManager(size_t thread_count)
 
 ThreadManager::~ThreadManager()
 {
-	stop_and_join();
-}
-
-void ThreadManager::stop_and_join()
-{
 	{
-		std::lock_guard<std::mutex> lock(tasks_mutex);
+		std::lock_guard<std::mutex> lock(mutex);
 		stopping = true;
 	}
-	tasks_cv.notify_all();
-	for (std::thread& worker : workers) if (worker.joinable()) worker.join();
+	work_cv.notify_all();
+	for (std::thread& worker : workers) worker.join();
 }
 
-void ThreadManager::force_stop()
+void ThreadManager::queue_task(std::unique_ptr<Task> task)
 {
-	std::unique_ptr<Task> dropped;
 	{
-		std::lock_guard<std::mutex> lock(tasks_mutex);
-		stopping = true;
-		dropped = std::move(queue_head);
-		queue_tail = nullptr;
+		std::lock_guard<std::mutex> lock(mutex);
+		TaskGroup& group = task->group;
+		// first, since it may throw, before anything is counted
+		if (!group.queue_head) queued_groups.push_back(&group);
+		group.pending_tasks++;
+		Task* raw_task = task.get();
+		if (group.queue_tail) group.queue_tail->next = std::move(task);
+		else group.queue_head = std::move(task);
+		group.queue_tail = raw_task;
 	}
-	// outside the lock, since destroying a task runs its captures' destructors
-	size_t dropped_count = 0;
-	while (dropped)
+	work_cv.notify_one();
+}
+
+std::unique_ptr<ThreadManager::Task> ThreadManager::take_next_task()
+{
+	if (queued_groups.empty()) return nullptr;
+	size_t next = 0;
+	for (size_t i = 1; i < queued_groups.size(); i++)
 	{
-		std::unique_ptr<Task> next = std::move(dropped->next);
-		finish(std::move(dropped));
-		dropped = std::move(next);
-		dropped_count++;
+		const TaskGroup& group = *queued_groups[i];
+		const TaskGroup& best = *queued_groups[next];
+		const bool is_waited_for = group.waiting_threads > 0;
+		const bool is_best_waited_for = best.waiting_threads > 0;
+		if (is_waited_for != is_best_waited_for ? is_waited_for : group.priority > best.priority) next = i;
 	}
-	{
-		std::lock_guard<std::mutex> lock(tasks_mutex);
-		pending_tasks -= dropped_count;
-		if (pending_tasks == 0) idle_cv.notify_all();
-	}
-	stop_and_join();
+	TaskGroup& group = *queued_groups[next];
+	std::unique_ptr<Task> task = std::move(group.queue_head);
+	group.queue_head = std::move(task->next);
+	queued_groups.erase(queued_groups.begin() + next);
+	if (group.queue_head) queued_groups.push_back(&group);
+	else group.queue_tail = nullptr;
+	return task;
 }
 
 void ThreadManager::worker_loop(size_t worker_index)
 {
+	worker_of = this;
 	while (true)
 	{
 		std::unique_ptr<Task> task;
 		{
-			std::unique_lock<std::mutex> lock(tasks_mutex);
-			tasks_cv.wait(lock, [this] { return queue_head != nullptr || stopping; });
-			if (!queue_head) return; // an empty queue only wakes us once 'stopping' is set
-			task = std::move(queue_head);
-			queue_head = std::move(task->next);
-			if (!queue_head) queue_tail = nullptr;
+			std::unique_lock<std::mutex> lock(mutex);
+			work_cv.wait(lock, [this] { return !queued_groups.empty() || stopping; });
+			task = take_next_task();
+			// woken without a task only when stopping
+			if (!task) return;
 		}
 		task->run(worker_index);
 		finish(std::move(task));
-		{
-			std::lock_guard<std::mutex> lock(tasks_mutex);
-			if (--pending_tasks == 0) idle_cv.notify_all();
-		}
 	}
 }
 
 void ThreadManager::finish(std::unique_ptr<Task> task)
 {
-	TaskGroup* group = task->group;
+	TaskGroup& group = task->group;
 	task.reset();
-	if (group) group->finish_task();
+	// notifies under the lock, since a waiting owner may destroy the group as soon as it holds the mutex
+	std::lock_guard<std::mutex> lock(mutex);
+	if (--group.pending_tasks == 0) group.idle_cv.notify_all();
 }
 
-void ThreadManager::wait_all()
+void ThreadManager::wait_for_group(TaskGroup& group)
 {
-	std::unique_lock<std::mutex> lock(tasks_mutex);
-	idle_cv.wait(lock, [this] { return pending_tasks == 0; });
+	std::unique_lock<std::mutex> lock(mutex);
+	group.waiting_threads++;
+	group.idle_cv.wait(lock, [&group] { return group.pending_tasks == 0; });
+	group.waiting_threads--;
 }
 
 ThreadManager& get_thread_manager()
@@ -93,25 +103,12 @@ ThreadManager& get_thread_manager()
 
 TaskGroup::~TaskGroup()
 {
-	wait();
+	thread_manager.wait_for_group(*this);
 }
 
 void TaskGroup::wait()
 {
-	std::unique_lock<std::mutex> lock(mutex);
-	idle_cv.wait(lock, [this] { return pending_tasks == 0; });
-}
-
-void TaskGroup::add_task()
-{
-	std::lock_guard<std::mutex> lock(mutex);
-	pending_tasks++;
-}
-
-void TaskGroup::finish_task()
-{
-	// notifies under the lock, since a waiting owner may destroy the group as soon as it holds the mutex
-	std::lock_guard<std::mutex> lock(mutex);
-	if (--pending_tasks == 0) idle_cv.notify_all();
+	VKTE_ASSERT(worker_of != &thread_manager, "vkte: A task waits for tasks, which can leave no worker to run them");
+	thread_manager.wait_for_group(*this);
 }
 } // namespace vkte

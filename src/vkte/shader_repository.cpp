@@ -171,7 +171,7 @@ void ShaderRepository::construct(const vk::Device& device, const std::string& sh
 	this->device = device;
 	this->shader_root_dir = shader_root_dir;
 	this->shader_debug_info = shader_debug_info;
-	global_sessions.resize(thread_manager.worker_count());
+	global_sessions.resize(thread_manager.get_worker_count());
 }
 
 void ShaderRepository::destruct()
@@ -205,11 +205,12 @@ bool ShaderRepository::recompile_all()
 		std::vector<uint32_t> spirv;
 	};
 
+	TaskGroup tasks(thread_manager);
 	std::vector<std::future<CompileResult>> futures;
 	futures.reserve(unique_shaders.size());
 	for (const Shader* shader : unique_shaders)
 	{
-		futures.push_back(thread_manager.run([this, shader](size_t worker_index) -> CompileResult
+		futures.push_back(tasks.run([this, shader](size_t worker_index) -> CompileResult
 		{
 			Slang::ComPtr<slang::IGlobalSession>& global_session = global_sessions[worker_index];
 			if (!global_session) VKTE_ASSERT(SLANG_SUCCEEDED(slang::createGlobalSession(global_session.writeRef())), "vkte: Failed to create Slang global session");
@@ -223,6 +224,7 @@ bool ShaderRepository::recompile_all()
 		}));
 	}
 
+	tasks.wait();
 	bool success = true;
 	std::vector<CompileResult> results;
 	results.reserve(unique_shaders.size());
