@@ -32,6 +32,8 @@ public:
 	template <typename F>
 	std::future<std::invoke_result_t<F, size_t>> run(F&& task);
 	size_t get_worker_count() const { return workers.size(); }
+	// whether the calling thread is one of its workers, running a task
+	bool is_worker_thread() const;
 
 private:
 	friend class TaskGroup;

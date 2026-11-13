@@ -95,6 +95,11 @@ void ThreadManager::wait_for_group(TaskGroup& group)
 	group.waiting_threads--;
 }
 
+bool ThreadManager::is_worker_thread() const
+{
+	return worker_of == this;
+}
+
 ThreadManager& get_thread_manager()
 {
 	static ThreadManager thread_manager;
